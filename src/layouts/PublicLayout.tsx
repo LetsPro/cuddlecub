@@ -27,7 +27,7 @@ export function PublicSiteScaffold({ children, logoScaleOverride }: { children: 
   const footerLogoMaxWidth = Math.round(260 * websiteLogoScale / 100);
 
   if (loading) {
-    return <LoadingScreen description="Applying the saved school branding and loading website content." label="Loading website..." />;
+    return <LoadingScreen showText={false} tone="plain" />;
   }
 
   return (

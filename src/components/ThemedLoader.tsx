@@ -3,6 +3,7 @@ interface ThemedLoaderProps {
   description?: string;
   size?: 'sm' | 'md' | 'lg';
   tone?: 'panel' | 'plain';
+  showText?: boolean;
 }
 
 const sizeMap = {
@@ -16,9 +17,10 @@ export function ThemedLoader({
   description,
   size = 'md',
   tone = 'plain',
+  showText = true,
 }: ThemedLoaderProps) {
   return (
-    <div className={`flex flex-col items-center justify-center gap-4 ${tone === 'panel' ? 'card-panel p-10 text-center' : 'py-8 text-center'}`}>
+    <div className={`flex flex-col items-center justify-center ${showText ? 'gap-4' : ''} ${tone === 'panel' ? 'card-panel p-10 text-center' : 'py-8 text-center'}`}>
       <div className={`relative ${sizeMap[size]}`}>
         <div
           className="absolute inset-0 rounded-full"
@@ -42,10 +44,12 @@ export function ThemedLoader({
           }}
         />
       </div>
-      <div className="space-y-1">
-        <p className="text-sm font-semibold theme-text-primary">{label}</p>
-        {description ? <p className="text-xs leading-5 text-slate-500">{description}</p> : null}
-      </div>
+      {showText ? (
+        <div className="space-y-1">
+          <p className="text-sm font-semibold theme-text-primary">{label}</p>
+          {description ? <p className="text-xs leading-5 text-slate-500">{description}</p> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
