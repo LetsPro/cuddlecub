@@ -6,6 +6,14 @@ const MAX_IMAGE_DIMENSION = 1920;
 const OPTIMIZED_IMAGE_TYPE = 'image/webp';
 const OPTIMIZED_IMAGE_QUALITY = 0.84;
 
+interface MediaTransformOptions {
+  width?: number;
+  height?: number;
+  resize?: 'cover' | 'contain' | 'fill';
+  quality?: number;
+  format?: 'origin';
+}
+
 function sanitizeFileName(fileName: string) {
   const baseName = fileName.replace(/\.[^/.]+$/, '');
   const cleaned = baseName
@@ -202,11 +210,18 @@ export async function deleteMediaAsset(asset: Pick<MediaAsset, 'id' | 'storage_p
   if (error) throw error;
 }
 
-export function resolveMediaUrl(value: string | null | undefined) {
+export function resolveMediaUrl(
+  value: string | null | undefined,
+  options?: { transform?: MediaTransformOptions },
+) {
   const normalizedValue = value?.trim();
 
   if (!normalizedValue) {
     return '';
+  }
+
+  if (/^(data:|blob:)/i.test(normalizedValue)) {
+    return normalizedValue;
   }
 
   if (isDirectMediaUrl(normalizedValue)) {
@@ -215,7 +230,9 @@ export function resolveMediaUrl(value: string | null | undefined) {
 
   const {
     data: { publicUrl },
-  } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(normalizedValue.replace(/^\/+/, ''));
+  } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(normalizedValue.replace(/^\/+/, ''), {
+    transform: options?.transform,
+  });
 
   return publicUrl;
 }

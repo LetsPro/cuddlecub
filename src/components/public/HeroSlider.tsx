@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Heart, Palette, Sparkles, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { WebsiteHeroSlide } from '../../types/app';
@@ -15,13 +15,16 @@ const highlightChips = [
 
 const fallbackSlideColors = ['#e56ea6', '#3f97d1', '#d98a18'];
 
-function warmImage(url: string, warmedUrls: Set<string>) {
+function warmImage(url: string, warmedUrls: Set<string>, onReady?: (url: string) => void) {
   if (!url || warmedUrls.has(url) || typeof window === 'undefined') {
     return;
   }
 
   const image = new Image();
   image.decoding = 'async';
+  image.onload = () => {
+    onReady?.(url);
+  };
   image.src = url;
   warmedUrls.add(url);
 }
@@ -30,6 +33,20 @@ export function HeroSlider({ slides }: HeroSliderProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const warmedUrlsRef = useRef<Set<string>>(new Set());
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
+  const [readyUrls, setReadyUrls] = useState<Set<string>>(new Set());
+  const nextIndex = useMemo(() => (slides.length > 1 ? (activeIndex + 1) % slides.length : activeIndex), [activeIndex, slides.length]);
+
+  function markUrlReady(url: string) {
+    setReadyUrls((current) => {
+      if (current.has(url)) {
+        return current;
+      }
+
+      const nextUrls = new Set(current);
+      nextUrls.add(url);
+      return nextUrls;
+    });
+  }
 
   useEffect(() => {
     if (slides.length <= 1) return;
@@ -46,15 +63,11 @@ export function HeroSlider({ slides }: HeroSliderProps) {
   useEffect(() => {
     if (!slides.length) return;
 
-    const preloadIndexes = new Set([(activeIndex + 1) % slides.length, (activeIndex + 2) % slides.length]);
-
-    preloadIndexes.forEach((index) => {
-      const imageUrl = slides[index]?.image_url;
-      if (imageUrl && !failedUrls.has(imageUrl)) {
-        warmImage(imageUrl, warmedUrlsRef.current);
-      }
-    });
-  }, [activeIndex, failedUrls, slides]);
+    const imageUrl = slides[nextIndex]?.image_url;
+    if (imageUrl && !failedUrls.has(imageUrl)) {
+      warmImage(imageUrl, warmedUrlsRef.current, markUrlReady);
+    }
+  }, [failedUrls, nextIndex, slides]);
 
   return (
     <div className="theme-dark-surface relative min-h-[460px] overflow-hidden rounded-[2.5rem] border border-white/20 shadow-[0_30px_80px_-24px_rgba(15,23,42,0.5)] sm:min-h-[540px] lg:min-h-[620px]">
@@ -71,19 +84,22 @@ export function HeroSlider({ slides }: HeroSliderProps) {
       {slides.map((slide, index) => {
         const isActive = index === activeIndex;
         const canRenderImage = Boolean(slide.image_url) && !failedUrls.has(slide.image_url);
+        const shouldLoadImage = canRenderImage && (isActive || index === nextIndex || readyUrls.has(slide.image_url));
 
         return (
           <div
             key={slide.id}
             className={`absolute inset-0 transition-all duration-700 ${isActive ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
           >
-            {canRenderImage ? (
+            {shouldLoadImage ? (
               <div className="absolute inset-0">
                 <img
                   alt={slide.title}
                   className="h-full w-full object-cover"
                   decoding="async"
-                  loading={isActive || index === (activeIndex + 1) % slides.length ? 'eager' : 'lazy'}
+                  fetchPriority={isActive ? 'high' : 'low'}
+                  loading={isActive ? 'eager' : 'lazy'}
+                  onLoad={() => markUrlReady(slide.image_url)}
                   onError={() =>
                     setFailedUrls((current) => {
                       const nextUrls = new Set(current);
@@ -91,6 +107,7 @@ export function HeroSlider({ slides }: HeroSliderProps) {
                       return nextUrls;
                     })
                   }
+                  sizes="(min-width: 1440px) 1400px, 100vw"
                   src={slide.image_url}
                 />
                 <div className="absolute inset-0 bg-slate-950/42" />
