@@ -1,3 +1,5 @@
+import { DEFAULT_KIDS_FONT_STYLE, getKidsFontOption, getKidsFontStyle, type KidsFontStyle } from './branding';
+
 const DEFAULT_PRIMARY = '#f58416';
 const DEFAULT_SECONDARY = '#10b5aa';
 const DEFAULT_SHELL_START = '#3d3026';
@@ -43,11 +45,11 @@ function blendHexColors(base: string, mix: string, mixWeight: number) {
   return `#${channels.join('')}`;
 }
 
-function persistTheme(primary: string, secondary: string) {
+function persistTheme(primary: string, secondary: string, fontStyle: KidsFontStyle) {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ primary, secondary }));
+    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({ primary, secondary, fontStyle }));
   } catch {
     // Ignore localStorage failures and continue with runtime-only theming.
   }
@@ -64,6 +66,7 @@ function readStoredTheme() {
     return {
       primary: normalizeHex(parsed.primary, DEFAULT_PRIMARY),
       secondary: normalizeHex(parsed.secondary, DEFAULT_SECONDARY),
+      fontStyle: getKidsFontStyle(parsed as Record<string, unknown>),
     };
   } catch {
     return null;
@@ -78,15 +81,17 @@ export function getThemeColors(source?: ThemeSource | null) {
   return {
     primary: normalizeHex(settingsPrimary ?? source?.primary_color, DEFAULT_PRIMARY),
     secondary: normalizeHex(settingsSecondary ?? source?.secondary_color, DEFAULT_SECONDARY),
+    fontStyle: getKidsFontStyle(settings),
   };
 }
 
-function setThemeVariables(primary: string, secondary: string) {
+function setThemeVariables(primary: string, secondary: string, fontStyle: KidsFontStyle) {
   if (typeof document === 'undefined') return;
 
   const root = document.documentElement;
   const shellStart = blendHexColors(primary, '#0f172a', 0.72);
   const shellEnd = blendHexColors(secondary, '#0f172a', 0.82);
+  const fontOption = getKidsFontOption(fontStyle);
 
   root.style.setProperty('--school-primary', primary);
   root.style.setProperty('--school-primary-rgb', hexToRgbChannels(primary));
@@ -94,28 +99,30 @@ function setThemeVariables(primary: string, secondary: string) {
   root.style.setProperty('--school-secondary-rgb', hexToRgbChannels(secondary));
   root.style.setProperty('--school-shell-start', shellStart || DEFAULT_SHELL_START);
   root.style.setProperty('--school-shell-end', shellEnd || DEFAULT_SHELL_END);
+  root.style.setProperty('--school-display-font', fontOption.displayStack);
+  root.style.setProperty('--school-body-font', fontOption.bodyStack);
 }
 
-export function applySchoolTheme(primaryColor?: string | null, secondaryColor?: string | null) {
+export function applySchoolTheme(primaryColor?: string | null, secondaryColor?: string | null, fontStyle: KidsFontStyle = DEFAULT_KIDS_FONT_STYLE) {
   const primary = normalizeHex(primaryColor, DEFAULT_PRIMARY);
   const secondary = normalizeHex(secondaryColor, DEFAULT_SECONDARY);
 
-  setThemeVariables(primary, secondary);
-  persistTheme(primary, secondary);
+  setThemeVariables(primary, secondary, fontStyle);
+  persistTheme(primary, secondary, fontStyle);
 }
 
 export function applyThemeFromSchool(source?: ThemeSource | null) {
-  const { primary, secondary } = getThemeColors(source);
-  applySchoolTheme(primary, secondary);
+  const { primary, secondary, fontStyle } = getThemeColors(source);
+  applySchoolTheme(primary, secondary, fontStyle);
 }
 
 export function resetSchoolTheme() {
-  setThemeVariables(DEFAULT_PRIMARY, DEFAULT_SECONDARY);
+  setThemeVariables(DEFAULT_PRIMARY, DEFAULT_SECONDARY, DEFAULT_KIDS_FONT_STYLE);
 }
 
 const storedTheme = readStoredTheme();
 if (storedTheme) {
-  setThemeVariables(storedTheme.primary, storedTheme.secondary);
+  setThemeVariables(storedTheme.primary, storedTheme.secondary, storedTheme.fontStyle);
 } else {
-  setThemeVariables(DEFAULT_PRIMARY, DEFAULT_SECONDARY);
+  setThemeVariables(DEFAULT_PRIMARY, DEFAULT_SECONDARY, DEFAULT_KIDS_FONT_STYLE);
 }

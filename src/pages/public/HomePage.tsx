@@ -3,16 +3,22 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { HeroSlider } from '../../components/public/HeroSlider';
 import { ImagePreviewModal } from '../../components/public/ImagePreviewModal';
+import { ManagementPanelSection } from '../../components/public/ManagementPanelSection';
+import { MissionVisionSection } from '../../components/public/MissionVisionSection';
 import { usePublicSite } from '../../lib/public-site';
+import { getWebsiteHeroSliderSettings } from '../../lib/website-settings';
 
-const aboutIcons = [Heart, Star, Palette, Sun];
 const programIcons = [BookOpen, Sparkles, Palette];
 const programLabels = ['Tiny explorers', 'Creative learners', 'Bright starters'];
 const programColors = ['#fde68a', '#bfdbfe', '#fecdd3'];
 const galleryColors = ['#fde68a', '#bfdbfe', '#fecdd3', '#bbf7d0'];
+const aboutPointIcons = [Heart, Star, Palette, Sun];
+const aboutPointDescription = 'Designed to make every school day feel bright, safe, and exciting for kids.';
 
 export function HomePage() {
   const { page, school, slides, programs, gallery } = usePublicSite();
+  const sliderSettings = getWebsiteHeroSliderSettings((school?.settings ?? {}) as Record<string, unknown>);
+  const aboutHighlights = page.about_points.slice(0, 4);
   const featuredPrograms = programs.slice(0, 3);
   const featuredGallery = gallery.slice(0, 4);
   const previewItems = featuredGallery.filter((item) => Boolean(item.image_url));
@@ -30,17 +36,17 @@ export function HomePage() {
   return (
     <div className="space-y-10 px-4 pt-4 sm:space-y-12 sm:px-6 sm:pt-6 lg:px-8">
       <div className="mx-auto max-w-[1400px]">
-        <HeroSlider slides={slides} />
+        <HeroSlider autoScroll={sliderSettings.autoScroll} intervalMs={sliderSettings.intervalSeconds * 1000} slides={slides} />
       </div>
 
-      <section className="mx-auto grid max-w-[1400px] gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="card-panel p-8 sm:p-10">
+      <section className="mx-auto grid max-w-[1400px] items-stretch gap-5 lg:grid-cols-[0.95fr_1.15fr]">
+        <div className="card-panel h-full p-8 sm:p-10 lg:min-h-[23rem]">
           <div className="kids-badge">
             <Sparkles className="h-4 w-4" />
             {page.about_eyebrow}
           </div>
-          <h2 className="mt-4 font-serif text-3xl text-slate-900 sm:text-4xl">{page.about_title}</h2>
-          <p className="mt-4 text-base leading-7 text-slate-600">{page.about_summary}</p>
+          <h2 className="mt-5 max-w-[22rem] font-serif text-3xl leading-tight text-slate-900 sm:text-4xl">{page.about_title}</h2>
+          <p className="mt-4 max-w-[28rem] text-base leading-7 text-slate-600">{page.about_summary}</p>
           <div className="mt-6 flex flex-wrap gap-3">
             <div className="kids-pill">
               <Heart className="h-4 w-4 text-brand-600" />
@@ -60,22 +66,32 @@ export function HomePage() {
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
-          {page.about_points.slice(0, 4).map((point, index) => {
-            const Icon = aboutIcons[index % aboutIcons.length];
+          {aboutHighlights.map((point, index) => {
+            const Icon = aboutPointIcons[index % aboutPointIcons.length];
 
             return (
-              <div key={point} className="kids-bubble-card p-6">
-                <div className="kids-icon-shell">
-                  <Icon className="h-5 w-5" />
+              <article key={point} className="kids-bubble-card relative h-full overflow-hidden rounded-[2.2rem] p-5 sm:p-6 lg:min-h-[11rem]">
+                <div aria-hidden className="absolute -right-7 -top-5 h-20 w-20 rounded-full bg-slate-100/92" />
+                <div className="relative">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[1.2rem] bg-slate-100 text-slate-600">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-5 max-w-[16rem] text-[1.15rem] font-extrabold leading-8 text-slate-900 sm:text-[1.35rem] sm:leading-9">{point}</h3>
+                  <p className="mt-2 max-w-[17rem] text-sm leading-7 text-slate-500">{aboutPointDescription}</p>
                 </div>
-                <p className="mt-4 text-base font-semibold text-slate-900">{point}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Designed to make every school day feel bright, safe, and exciting for kids.</p>
-              </div>
+              </article>
             );
           })}
         </div>
       </section>
+
+      <div className="mx-auto max-w-[1400px]">
+        <MissionVisionSection mission={page.about_mission} vision={page.about_vision} />
+      </div>
+
+      <ManagementPanelSection />
 
       <section className="mx-auto max-w-[1400px]">
         <div className="mb-6 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">

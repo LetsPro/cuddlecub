@@ -41,33 +41,20 @@ export function PublicSiteScaffold({ children, logoScaleOverride }: { children: 
 
       <header className="sticky top-0 z-40 px-4 pt-4 sm:px-6 lg:px-8">
         <div className="kids-cloud-panel kids-site-header mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-5 py-4 sm:px-6">
-          <NavLink className="flex min-w-0 items-center gap-3" to="/">
+          <NavLink aria-label={school?.name ?? 'School Website'} className="flex min-w-0 items-center gap-3" to="/">
             {school?.logo_url ? (
-              <>
-                <img
-                  alt={school.name}
-                  className="w-auto shrink-0 object-contain"
-                  decoding="async"
-                  loading="eager"
-                  src={school.logo_url}
-                  style={{ height: `${headerLogoHeight}px`, maxWidth: `${headerLogoMaxWidth}px` }}
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-base font-extrabold text-slate-900 sm:text-xl">{school.name}</p>
-                </div>
-              </>
+              <img
+                alt={school.name}
+                className="w-auto shrink-0 object-contain"
+                decoding="async"
+                loading="eager"
+                src={school.logo_url}
+                style={{ height: `${headerLogoHeight}px`, maxWidth: `${headerLogoMaxWidth}px` }}
+              />
             ) : (
-              <>
-                <div className="theme-icon-gradient flex h-14 w-14 items-center justify-center rounded-[1.6rem]">
-                  <School2 className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-base font-extrabold text-slate-900 sm:text-xl">{school?.name ?? 'Kindergarten CRM'}</p>
-                  <p className="hidden truncate text-xs font-extrabold uppercase tracking-[0.22em] text-slate-500 sm:block">
-                    {typeof settings.dashboard_brandline === 'string' ? settings.dashboard_brandline : 'Early years learning campus'}
-                  </p>
-                </div>
-              </>
+              <div className="theme-icon-gradient flex h-14 w-14 items-center justify-center rounded-[1.6rem]">
+                <School2 className="h-6 w-6" />
+              </div>
             )}
           </NavLink>
 
@@ -136,9 +123,6 @@ export function PublicSiteScaffold({ children, logoScaleOverride }: { children: 
                     <School2 className="h-6 w-6" />
                   </div>
                 )}
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900">{school?.name ?? 'School Website'}</h2>
-                </div>
               </div>
               <p className="max-w-xl text-sm leading-7 text-slate-600">{page.footer_tagline}</p>
               <div className="flex flex-wrap gap-3">

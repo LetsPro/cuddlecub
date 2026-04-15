@@ -4,13 +4,16 @@ import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
+import { useAppContext } from '../../lib/app-context';
+import { openBrandedInvoicePdf } from '../../lib/invoices';
 import { buildStudentNameMap } from '../../lib/portal-data';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
-import { downloadCsv, formatCurrency, formatDate } from '../../lib/utils';
+import { formatCurrency, formatDate } from '../../lib/utils';
 import type { FeeInvoice, FeePayment } from '../../types/app';
 
 export function ParentFeesPage() {
+  const { school } = useAppContext();
   const { students, message } = useParentPortal();
   const [invoices, setInvoices] = useState<FeeInvoice[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
@@ -45,12 +48,17 @@ export function ParentFeesPage() {
     }
   }
 
-  function downloadReceipt(invoice: FeeInvoice) {
-    downloadCsv(
-      `${invoice.invoice_number}-receipt.csv`,
-      ['Invoice Number', 'Student', 'Due Date', 'Amount Due', 'Amount Paid', 'Status'],
-      [[invoice.invoice_number, studentNameMap[invoice.student_id] ?? 'Child', invoice.due_date, invoice.amount_due, invoice.amount_paid, invoice.status]],
-    );
+  function downloadInvoice(invoice: FeeInvoice) {
+    try {
+      openBrandedInvoicePdf({
+        school,
+        invoice,
+        studentName: studentNameMap[invoice.student_id] ?? 'Child',
+        payments,
+      });
+    } catch (error) {
+      setLoadMessage(getErrorMessage(error));
+    }
   }
 
   return (
@@ -80,10 +88,11 @@ export function ParentFeesPage() {
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
               {
                 key: 'receipt',
-                label: 'Receipt',
+                label: 'PDF',
                 render: (row) => (
-                  <button className="button-secondary px-3 py-2 text-xs" onClick={() => downloadReceipt(row)} type="button">
+                  <button className="button-secondary gap-1 px-3 py-2 text-xs" onClick={() => downloadInvoice(row)} type="button">
                     <Download className="h-3.5 w-3.5" />
+                    PDF
                   </button>
                 ),
               },

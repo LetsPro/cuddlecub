@@ -2217,5 +2217,3 @@ end;
 $$;
 
 grant execute on function public.bootstrap_school_admin(text, text, text) to authenticated;
-
-

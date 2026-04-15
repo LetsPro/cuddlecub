@@ -28,7 +28,6 @@ const emptyForm = {
   address: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
-  preferred_channel: 'whatsapp',
   is_active: true,
 };
 
@@ -108,7 +107,6 @@ export function ParentsPage() {
       address: parent.address ?? '',
       emergency_contact_name: parent.emergency_contact_name ?? '',
       emergency_contact_phone: parent.emergency_contact_phone ?? '',
-      preferred_channel: ((parent.notification_preferences as { channel?: string } | null)?.channel ?? 'whatsapp') as string,
       is_active: parent.is_active,
     });
     setGeneratedCredential(null);
@@ -152,7 +150,7 @@ export function ParentsPage() {
       address: form.address || null,
       emergency_contact_name: form.emergency_contact_name || null,
       emergency_contact_phone: form.emergency_contact_phone || null,
-      notification_preferences: { channel: form.preferred_channel },
+      notification_preferences: { channel: 'dashboard' },
       is_active: form.is_active,
     };
 
@@ -364,7 +362,7 @@ export function ParentsPage() {
       <PageHeader
         eyebrow="Parent Management"
         title="Contacts, preferences and family communication"
-        description="Manage family records, child links, preferred channels and parent portal access from one clean directory."
+        description="Manage family records, child links, dashboard notice visibility and parent portal access from one clean directory."
         actions={
           <button className="button-primary gap-2" onClick={openCreateModal} type="button">
             <Plus className="h-4 w-4" />
@@ -410,9 +408,7 @@ export function ParentsPage() {
               render: (row) => (
                 <div>
                   <p className="text-sm text-slate-700">{row.whatsapp_number ?? 'No WhatsApp number'}</p>
-                  <p className="text-xs text-slate-500">
-                    Preferred {(row.notification_preferences as { channel?: string } | null)?.channel ?? 'whatsapp'}
-                  </p>
+                  <p className="text-xs text-slate-500">Dashboard notices enabled</p>
                 </div>
               ),
             },
@@ -514,13 +510,8 @@ export function ParentsPage() {
             />
             {editingParent?.user_id ? <p className="mt-2 text-xs text-slate-500">Login already exists for this parent, so the email is locked.</p> : null}
           </div>
-          <div>
-            <label className="form-label">Preferred channel</label>
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, preferred_channel: event.target.value }))} value={form.preferred_channel}>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="email">Email</option>
-              <option value="all">All channels</option>
-            </select>
+          <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
+            Parent notices are now delivered through the <span className="font-semibold text-slate-800">dashboard only</span>.
           </div>
           <div>
             <label className="form-label">Emergency contact name</label>
@@ -595,10 +586,8 @@ export function ParentsPage() {
                   <p className="mt-2 text-sm font-semibold text-slate-700">{(childrenMap[accessParent.id] ?? []).length ? childrenMap[accessParent.id].join(', ') : 'No linked child'}</p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Preferred channel</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-700">
-                    {(accessParent.notification_preferences as { channel?: string } | null)?.channel ?? 'whatsapp'}
-                  </p>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Notice channel</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-700">Dashboard only</p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-3">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Last activity</p>

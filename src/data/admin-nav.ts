@@ -12,7 +12,6 @@ import {
   Megaphone,
   Settings,
   ShieldCheck,
-  Sparkles,
   Users,
   UserRound,
   Wallet,
@@ -34,7 +33,6 @@ export const adminNavItems: WorkspaceNavItem[] = [
   { group: 'Operations', label: 'Events', description: 'Calendar, holidays and meeting schedules', path: '/events', icon: CalendarDays },
   { group: 'Brand & Reports', label: 'Website', description: 'Landing pages, hero slides and public content', path: '/website', icon: Globe },
   { group: 'Brand & Reports', label: 'Media', description: 'Upload, edit and reuse media assets', path: '/media', icon: Images },
-  { group: 'Brand & Reports', label: 'Content Studio', description: 'Branded creatives and reusable templates', path: '/content', icon: Sparkles },
   { group: 'Brand & Reports', label: 'Reports', description: 'Operational exports and summary reports', path: '/reports', icon: CreditCard },
   { group: 'Brand & Reports', label: 'Settings', description: 'Branding, language and policy controls', path: '/settings', icon: Settings },
 ];

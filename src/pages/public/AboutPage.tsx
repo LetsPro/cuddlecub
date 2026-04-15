@@ -1,7 +1,7 @@
-import { BookOpen, Heart, Palette, Sparkles, Star } from 'lucide-react';
+import { BookOpen, Heart, Palette, Sparkles } from 'lucide-react';
+import { ManagementPanelSection } from '../../components/public/ManagementPanelSection';
+import { MissionVisionSection } from '../../components/public/MissionVisionSection';
 import { usePublicSite } from '../../lib/public-site';
-
-const icons = [Heart, BookOpen, Palette, Star];
 
 export function AboutPage() {
   const { page, school } = usePublicSite();
@@ -47,20 +47,9 @@ export function AboutPage() {
           </div>
         </section>
 
-        <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {page.about_points.map((point, index) => {
-            const Icon = icons[index % icons.length];
+        <MissionVisionSection mission={page.about_mission} vision={page.about_vision} />
 
-            return (
-              <article key={point} className="kids-bubble-card p-6">
-                <div className="kids-icon-shell">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <p className="mt-4 text-lg font-bold text-slate-900">{point}</p>
-              </article>
-            );
-          })}
-        </section>
+        <ManagementPanelSection />
       </div>
     </div>
   );

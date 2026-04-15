@@ -5,6 +5,8 @@ import type { WebsiteHeroSlide } from '../../types/app';
 
 interface HeroSliderProps {
   slides: WebsiteHeroSlide[];
+  autoScroll?: boolean;
+  intervalMs?: number;
 }
 
 const highlightChips = [
@@ -12,6 +14,8 @@ const highlightChips = [
   { label: 'Caring teachers', icon: Heart },
   { label: 'Creative spaces', icon: Palette },
 ];
+
+const openingTagline = 'Where gentle care meets global success';
 
 const fallbackSlideColors = ['#e56ea6', '#3f97d1', '#d98a18'];
 
@@ -29,7 +33,7 @@ function warmImage(url: string, warmedUrls: Set<string>, onReady?: (url: string)
   warmedUrls.add(url);
 }
 
-export function HeroSlider({ slides }: HeroSliderProps) {
+export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: HeroSliderProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const warmedUrlsRef = useRef<Set<string>>(new Set());
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
@@ -49,16 +53,16 @@ export function HeroSlider({ slides }: HeroSliderProps) {
   }
 
   useEffect(() => {
-    if (slides.length <= 1) return;
+    if (!autoScroll || slides.length <= 1) return;
 
     const interval = window.setInterval(() => {
       setActiveIndex((current) => (current + 1) % slides.length);
-    }, 5200);
+    }, intervalMs);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, [slides.length]);
+  }, [autoScroll, intervalMs, slides.length]);
 
   useEffect(() => {
     if (!slides.length) return;
@@ -129,6 +133,9 @@ export function HeroSlider({ slides }: HeroSliderProps) {
                   {slide.eyebrow || 'Welcome'}
                 </div>
                 <h1 className="mt-5 font-serif text-3xl leading-tight sm:text-5xl lg:text-6xl">{slide.title}</h1>
+                <p className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/85 sm:text-base">
+                  {openingTagline}
+                </p>
                 <p className="mt-5 max-w-2xl text-sm leading-7 text-white/90 sm:text-lg">{slide.subtitle}</p>
                 <div className="mt-5 hidden flex-wrap gap-3 sm:flex">
                   {highlightChips.map((chip) => (

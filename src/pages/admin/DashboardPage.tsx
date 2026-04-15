@@ -47,7 +47,6 @@ const quickActions = [
   { label: 'Add teacher', to: '/staff' },
   { label: 'Add parent', to: '/parents' },
   { label: 'Send notice', to: '/communication' },
-  { label: 'Create post', to: '/content' },
 ];
 
 export function DashboardPage() {

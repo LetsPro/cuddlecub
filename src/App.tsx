@@ -25,7 +25,6 @@ import { AttendancePage } from './pages/admin/AttendancePage';
 import { DailyCarePage } from './pages/admin/DailyCarePage';
 import { FeesPage } from './pages/admin/FeesPage';
 import { CommunicationPage } from './pages/admin/CommunicationPage';
-import { ContentPage } from './pages/admin/ContentPage';
 import { EventsPage } from './pages/admin/EventsPage';
 import { ReportsPage } from './pages/admin/ReportsPage';
 import { SettingsPage } from './pages/admin/SettingsPage';
@@ -278,7 +277,6 @@ export default function App() {
             <Route element={<DailyCarePage />} path="daily-care" />
             <Route element={<FeesPage />} path="fees" />
             <Route element={<CommunicationPage />} path="communication" />
-            <Route element={<ContentPage />} path="content" />
             <Route element={<EventsPage />} path="events" />
             <Route element={<WebsitePage />} path="website" />
             <Route element={<MediaPage />} path="media" />

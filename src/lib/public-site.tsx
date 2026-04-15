@@ -17,6 +17,10 @@ const defaultPageContent: WebsitePageContent = {
   about_summary: 'We create a secure, joyful environment where every child learns through play, routine, creativity, and caring guidance.',
   about_story:
     'Our approach blends foundational academics, social-emotional development, creative exploration, and strong parent communication so children feel safe, happy, and ready to grow.',
+  about_mission:
+    'To nurture every child with gentle care, joyful learning, and strong foundational skills in a safe early-years environment.',
+  about_vision:
+    'To help children grow into confident, compassionate, and globally ready learners who step into the future with curiosity and character.',
   about_points: [
     'Play-based learning with structured routines',
     'Safe, caring classrooms and child-first attention',

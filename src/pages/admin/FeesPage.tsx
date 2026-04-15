@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ReceiptIndianRupee, Wallet } from 'lucide-react';
+import { Download, ReceiptIndianRupee, Wallet } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
+import { openBrandedInvoicePdf } from '../../lib/invoices';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import type { FeeInvoice, FeePayment, FeeStructure, StudentRecord } from '../../types/app';
@@ -143,6 +144,19 @@ export function FeesPage() {
     .filter((invoice) => invoice.status === 'pending' || invoice.status === 'partially_paid')
     .reduce((sum, invoice) => sum + (invoice.amount_due - (invoice.amount_paid ?? 0)), 0);
 
+  function handleInvoicePdf(invoice: FeeInvoice) {
+    try {
+      openBrandedInvoicePdf({
+        school,
+        invoice,
+        studentName: studentLookup[invoice.student_id] ?? 'Student',
+        payments,
+      });
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -202,6 +216,7 @@ export function FeesPage() {
               <button className="button-primary" type="submit">
                 Generate invoice
               </button>
+              <p className="mt-2 text-xs text-slate-500">Use the invoice ledger below to open a branded PDF version for print or download.</p>
             </div>
           </form>
         </SectionCard>
@@ -263,6 +278,16 @@ export function FeesPage() {
               { key: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount_due) },
               { key: 'paid', label: 'Paid', render: (row) => formatCurrency(row.amount_paid) },
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+              {
+                key: 'pdf',
+                label: 'PDF',
+                render: (row) => (
+                  <button className="button-secondary gap-1 px-3 py-2 text-xs" onClick={() => handleInvoicePdf(row)} type="button">
+                    <Download className="h-3.5 w-3.5" />
+                    PDF
+                  </button>
+                ),
+              },
             ]}
             emptyMessage="No invoices available."
             rows={invoices}

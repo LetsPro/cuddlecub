@@ -53,6 +53,8 @@ export interface WebsitePageContent {
   about_title: string;
   about_summary: string;
   about_story: string;
+  about_mission: string;
+  about_vision: string;
   about_points: string[];
   programs_eyebrow: string;
   programs_title: string;

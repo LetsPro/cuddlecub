@@ -13,6 +13,7 @@ import { PublicSiteProvider } from '../../lib/public-site';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { ToastMessage } from '../../lib/toast';
 import { getInitials } from '../../lib/utils';
+import { getWebsiteHeroSliderSettings } from '../../lib/website-settings';
 import { PublicSiteScaffold } from '../../layouts/PublicLayout';
 import { AboutPage } from '../public/AboutPage';
 import { GalleryPage } from '../public/GalleryPage';
@@ -35,6 +36,10 @@ const defaultPageForm: WebsitePageContent = {
   about_summary: 'We create a secure, joyful environment where every child learns through play, routine, creativity, and caring guidance.',
   about_story:
     'Our approach blends foundational academics, social-emotional development, creative exploration, and strong parent communication so children feel safe, happy, and ready to grow.',
+  about_mission:
+    'To nurture every child with gentle care, joyful learning, and strong foundational skills in a safe early-years environment.',
+  about_vision:
+    'To help children grow into confident, compassionate, and globally ready learners who step into the future with curiosity and character.',
   about_points: [
     'Play-based learning with structured routines',
     'Safe, caring classrooms and child-first attention',
@@ -196,10 +201,12 @@ function WebsiteListItem({ title, subtitle, imageUrl, badges, onEdit }: WebsiteL
 export function WebsitePage() {
   const { school, refreshSchool } = useAppContext();
   const initialLogoScale = getWebsiteLogoScale((school.settings ?? {}) as Record<string, unknown>);
+  const initialSliderSettings = getWebsiteHeroSliderSettings((school.settings ?? {}) as Record<string, unknown>);
   const [pageForm, setPageForm] = useState({
     ...defaultPageForm,
     about_points_text: arrayToLines(defaultPageForm.about_points),
   });
+  const [sliderSettings, setSliderSettings] = useState(initialSliderSettings);
   const [slides, setSlides] = useState<WebsiteHeroSlide[]>([]);
   const [programs, setPrograms] = useState<WebsiteProgram[]>([]);
   const [gallery, setGallery] = useState<WebsiteGalleryItem[]>([]);
@@ -219,6 +226,7 @@ export function WebsitePage() {
   const [previewSection, setPreviewSection] = useState<WebsiteContentSection>('home');
   const [logoScale, setLogoScale] = useState(initialLogoScale);
   const [savingLogoScale, setSavingLogoScale] = useState(false);
+  const [savingSliderSettings, setSavingSliderSettings] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [savingPage, setSavingPage] = useState(false);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
@@ -229,6 +237,10 @@ export function WebsitePage() {
 
   useEffect(() => {
     setLogoScale(getWebsiteLogoScale((school.settings ?? {}) as Record<string, unknown>));
+  }, [school.settings]);
+
+  useEffect(() => {
+    setSliderSettings(getWebsiteHeroSliderSettings((school.settings ?? {}) as Record<string, unknown>));
   }, [school.settings]);
 
   async function ensureWebsitePage() {
@@ -299,6 +311,8 @@ export function WebsitePage() {
         about_title: pageForm.about_title,
         about_summary: pageForm.about_summary,
         about_story: pageForm.about_story,
+        about_mission: pageForm.about_mission,
+        about_vision: pageForm.about_vision,
         about_points: linesToArray(pageForm.about_points_text),
         programs_eyebrow: pageForm.programs_eyebrow,
         programs_title: pageForm.programs_title,
@@ -639,6 +653,33 @@ export function WebsitePage() {
     }
   }
 
+  async function handleSliderSettingsSave() {
+    setSavingSliderSettings(true);
+    setMessage(null);
+
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({
+          settings: {
+            ...(school.settings ?? {}),
+            website_slider_auto_scroll: sliderSettings.autoScroll,
+            website_slider_interval_seconds: sliderSettings.intervalSeconds,
+          },
+        })
+        .eq('id', school.id);
+
+      if (error) throw error;
+
+      await refreshSchool();
+      setMessage('Hero slider settings updated.');
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setSavingSliderSettings(false);
+    }
+  }
+
   const summary = useMemo(
     () => ({
       slides: slides.filter((item) => item.is_active).length,
@@ -745,6 +786,52 @@ export function WebsitePage() {
                     Preview website
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white px-5 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Hero slider scroll</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Control whether homepage slider content scrolls automatically and choose the timing.</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  {sliderSettings.autoScroll ? `Every ${sliderSettings.intervalSeconds}s` : 'Manual only'}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <input
+                      checked={sliderSettings.autoScroll}
+                      onChange={(event) => setSliderSettings((current) => ({ ...current, autoScroll: event.target.checked }))}
+                      type="checkbox"
+                    />
+                    <div>
+                      <p className="font-semibold text-slate-700">Auto-scroll slider content</p>
+                      <p className="text-xs text-slate-500">When enabled, hero slides move automatically on the public homepage.</p>
+                    </div>
+                  </label>
+
+                  <div className="max-w-xs">
+                    <label className="form-label">Scroll interval</label>
+                    <select
+                      className="form-input"
+                      disabled={!sliderSettings.autoScroll}
+                      onChange={(event) => setSliderSettings((current) => ({ ...current, intervalSeconds: Number(event.target.value) }))}
+                      value={sliderSettings.intervalSeconds}
+                    >
+                      <option value={3}>3 seconds</option>
+                      <option value={5}>5 seconds</option>
+                      <option value={7}>7 seconds</option>
+                      <option value={10}>10 seconds</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button className="button-primary whitespace-nowrap" disabled={savingSliderSettings} onClick={() => void handleSliderSettingsSave()} type="button">
+                  {savingSliderSettings ? 'Saving...' : 'Save slider scroll'}
+                </button>
               </div>
             </div>
 
@@ -866,6 +953,20 @@ export function WebsitePage() {
                 ) : (
                   <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500 sm:col-span-2">No about highlights set yet.</div>
                 )}
+              </div>
+            </div>
+
+            <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Mission & vision</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-400">Mission</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">{pageForm.about_mission}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-400">Vision</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">{pageForm.about_vision}</p>
+                </div>
               </div>
             </div>
 
@@ -1015,7 +1116,7 @@ export function WebsitePage() {
             </button>
           }
         >
-          <div className="space-y-3">
+          <div className="max-h-[42rem] space-y-3 overflow-y-auto pr-2">
             {gallery.length ? (
               gallery.map((row) => (
                 <WebsiteListItem
@@ -1167,6 +1268,14 @@ export function WebsitePage() {
                 <div>
                   <label className="form-label">About story</label>
                   <textarea className="form-input min-h-32" onChange={(event) => setPageForm((current) => ({ ...current, about_story: event.target.value }))} value={pageForm.about_story} />
+                </div>
+                <div>
+                  <label className="form-label">Mission statement</label>
+                  <textarea className="form-input min-h-28" onChange={(event) => setPageForm((current) => ({ ...current, about_mission: event.target.value }))} value={pageForm.about_mission} />
+                </div>
+                <div>
+                  <label className="form-label">Vision statement</label>
+                  <textarea className="form-input min-h-28" onChange={(event) => setPageForm((current) => ({ ...current, about_vision: event.target.value }))} value={pageForm.about_vision} />
                 </div>
                 <div>
                   <label className="form-label">About points</label>

@@ -5,6 +5,7 @@ import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { useAppContext } from '../../lib/app-context';
+import { getKidsFontStyle, kidsFontOptions, type KidsFontStyle } from '../../lib/branding';
 import { MAX_WEBSITE_LOGO_SCALE, MIN_WEBSITE_LOGO_SCALE, getWebsiteLogoScale } from '../../lib/public-branding';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { ToastMessage } from '../../lib/toast';
@@ -45,10 +46,7 @@ export function SettingsPage() {
     primary_color: themePrimaryColor,
     secondary_color: themeSecondaryColor,
     language_preference: typeof settings.language_preference === 'string' ? settings.language_preference : 'en',
-    terms_and_policies: typeof settings.terms_and_policies === 'string' ? settings.terms_and_policies : '',
-    whatsapp_sender_name: typeof settings.whatsapp_sender_name === 'string' ? settings.whatsapp_sender_name : '',
-    report_footer: typeof settings.report_footer === 'string' ? settings.report_footer : '',
-    dashboard_brandline: typeof settings.dashboard_brandline === 'string' ? settings.dashboard_brandline : '',
+    kids_font_style: getKidsFontStyle(settings),
   });
   const [message, setMessage] = useState<string | null>(null);
 
@@ -67,10 +65,7 @@ export function SettingsPage() {
       primary_color: typeof nextSettings.theme_primary_color === 'string' ? nextSettings.theme_primary_color : school.primary_color ?? '#f58416',
       secondary_color: typeof nextSettings.theme_secondary_color === 'string' ? nextSettings.theme_secondary_color : school.secondary_color ?? '#10b5aa',
       language_preference: typeof nextSettings.language_preference === 'string' ? nextSettings.language_preference : 'en',
-      terms_and_policies: typeof nextSettings.terms_and_policies === 'string' ? nextSettings.terms_and_policies : '',
-      whatsapp_sender_name: typeof nextSettings.whatsapp_sender_name === 'string' ? nextSettings.whatsapp_sender_name : '',
-      report_footer: typeof nextSettings.report_footer === 'string' ? nextSettings.report_footer : '',
-      dashboard_brandline: typeof nextSettings.dashboard_brandline === 'string' ? nextSettings.dashboard_brandline : '',
+      kids_font_style: getKidsFontStyle(nextSettings),
     });
   }, [school]);
 
@@ -118,10 +113,7 @@ export function SettingsPage() {
             theme_primary_color: form.primary_color,
             theme_secondary_color: form.secondary_color,
             language_preference: form.language_preference,
-            terms_and_policies: form.terms_and_policies,
-            whatsapp_sender_name: form.whatsapp_sender_name,
-            report_footer: form.report_footer,
-            dashboard_brandline: form.dashboard_brandline,
+            kids_font_style: form.kids_font_style,
           },
         })
         .eq('id', school.id);
@@ -138,8 +130,8 @@ export function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Settings"
-        title="Branding and policy controls"
-        description="Manage the school profile, branding theme, language preference, policy text and communication settings from one control panel."
+        title="Branding and workspace controls"
+        description="Manage the school profile, theme, language and kid-friendly font styling used across the dashboard and branded invoice PDFs."
       />
       <ToastMessage message={message} />
 
@@ -279,20 +271,27 @@ export function SettingsPage() {
             </select>
           </div>
           <div>
-            <label className="form-label">WhatsApp sender label</label>
-            <input className="form-input" onChange={(event) => setForm((current) => ({ ...current, whatsapp_sender_name: event.target.value }))} value={form.whatsapp_sender_name} />
+            <label className="form-label">Kids font style</label>
+            <select
+              className="form-input"
+              onChange={(event) => setForm((current) => ({ ...current, kids_font_style: event.target.value as KidsFontStyle }))}
+              value={form.kids_font_style}
+            >
+              {kidsFontOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              Choose from kid-oriented fonts only. The selected style is used for the dashboard mood and branded fee invoice PDFs.
+            </p>
           </div>
-          <div className="md:col-span-2">
-            <label className="form-label">Dashboard brandline</label>
-            <input className="form-input" onChange={(event) => setForm((current) => ({ ...current, dashboard_brandline: event.target.value }))} value={form.dashboard_brandline} />
-          </div>
-          <div className="md:col-span-2">
-            <label className="form-label">Terms and policies</label>
-            <textarea className="form-input min-h-28" onChange={(event) => setForm((current) => ({ ...current, terms_and_policies: event.target.value }))} value={form.terms_and_policies} />
-          </div>
-          <div className="md:col-span-2">
-            <label className="form-label">Report footer</label>
-            <textarea className="form-input min-h-24" onChange={(event) => setForm((current) => ({ ...current, report_footer: event.target.value }))} value={form.report_footer} />
+          <div className="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4">
+            <p className="text-sm font-semibold text-slate-900">Branded invoice PDF</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              The Fees module now generates printable invoice PDFs using the school logo, theme colors, contact details and the selected kids font style.
+            </p>
           </div>
           <div className="md:col-span-2">
             <button className="button-primary" type="submit">
