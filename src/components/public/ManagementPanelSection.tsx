@@ -1,29 +1,29 @@
-import { BriefcaseBusiness, Building2, Lightbulb, UserRound } from 'lucide-react';
+import { BriefcaseBusiness } from 'lucide-react';
 
 const managementMembers = [
   {
-    name: 'Hemashree K',
+    name: 'Ms Hemashree K',
+    image: '/management/ms-hemashree-k.jpg',
     role: 'Founder, MD',
     description: 'Clinical psychologist, Entrepreneur, Corporate Trainer.',
-    icon: UserRound,
   },
   {
-    name: 'Yashas R.',
+    name: 'Mr Yashas',
+    image: '/management/mr-yashas.jpg',
     role: 'Co-Founder, CEO',
     description: 'Entrepreneur, Founder of Dayanandamai Event planners.',
-    icon: BriefcaseBusiness,
   },
   {
-    name: 'Pushpalatha R.',
+    name: 'Smt Pushpalatha',
+    image: '/management/smt-pushpalatha.jpg',
     role: 'Director of Cuddle Cub International Preschool',
     description: 'President, Jnaanajyoti Educational Trust. Renowned artist.',
-    icon: Building2,
   },
   {
-    name: 'Ghanavanth K',
+    name: 'Mr Ghanavanth',
+    image: '/management/mr-ghanavanth.jpg',
     role: 'Business Development Officer',
     description: 'Business development officer of Cuddle Cub International Preschool, Tech Engineer.',
-    icon: Lightbulb,
   },
 ];
 
@@ -42,20 +42,18 @@ export function ManagementPanelSection() {
       </div>
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {managementMembers.map((member) => {
-          const Icon = member.icon;
-
-          return (
-            <article key={member.name} className="kids-bubble-card p-6">
-              <div className="theme-icon-gradient flex h-12 w-12 items-center justify-center rounded-[1.2rem] text-white">
-                <Icon className="h-5 w-5" />
-              </div>
+        {managementMembers.map((member) => (
+          <article key={member.name} className="kids-bubble-card h-full overflow-hidden p-0">
+            <div className="h-72 w-full bg-slate-100">
+              <img src={member.image} alt={member.name} className="h-full w-full object-cover object-top" loading="lazy" />
+            </div>
+            <div className="p-6">
               <p className="mt-5 text-xl font-extrabold text-slate-900">{member.name}</p>
               <p className="mt-2 text-sm font-semibold theme-text-primary">{member.role}</p>
               <p className="mt-3 text-sm leading-7 text-slate-600">{member.description}</p>
-            </article>
-          );
-        })}
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
