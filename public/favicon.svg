@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Cuddle Cub International Pre School">
+  <rect width="192" height="192" rx="42" fill="#fff7ed"/>
+  <circle cx="57" cy="60" r="23" fill="#ffd166"/>
+  <circle cx="135" cy="60" r="23" fill="#ffd166"/>
+  <circle cx="96" cy="99" r="62" fill="#ffb84d"/>
+  <circle cx="72" cy="94" r="9" fill="#243047"/>
+  <circle cx="120" cy="94" r="9" fill="#243047"/>
+  <ellipse cx="96" cy="112" rx="18" ry="14" fill="#fff3dc"/>
+  <circle cx="96" cy="108" r="6" fill="#243047"/>
+  <path d="M79 128c9 11 25 11 34 0" fill="none" stroke="#243047" stroke-width="7" stroke-linecap="round"/>
+  <path d="M43 149c28 25 79 25 107 0" fill="none" stroke="#4f9dff" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="48" cy="144" r="10" fill="#50c878"/>
+  <circle cx="144" cy="144" r="10" fill="#ff6b6b"/>
+</svg>

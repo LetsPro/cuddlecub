@@ -1,0 +1,17 @@
+{
+  "name": "Cuddle Cub International Pre School",
+  "short_name": "Cuddle Cub",
+  "description": "Cuddle Cub International Pre School in Mysuru offers joyful play-based early learning, nursery, pre-primary and daycare programs.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff7ed",
+  "theme_color": "#ff7a59",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

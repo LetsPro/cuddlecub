@@ -1,9 +1,10 @@
 import { Heart, Images, Mail, MapPin, Menu, Palette, Phone, School2, Sparkles } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useState, type ReactNode } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { PublicSiteProvider, usePublicSite } from '../lib/public-site';
 import { getWebsiteLogoScale } from '../lib/public-branding';
+import { applySeo, getPublicSeo } from '../lib/seo';
 
 const links = [
   { label: 'Home', to: '/', icon: Sparkles },
@@ -14,6 +15,7 @@ const links = [
 
 export function PublicSiteScaffold({ children, logoScaleOverride }: { children: ReactNode; logoScaleOverride?: number }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
   const { school, page, loading, error } = usePublicSite();
   const settings = (school?.settings ?? {}) as Record<string, unknown>;
   const address = page.footer_address || school?.address;
@@ -25,6 +27,14 @@ export function PublicSiteScaffold({ children, logoScaleOverride }: { children: 
   const headerLogoMaxWidth = Math.round(220 * websiteLogoScale / 100);
   const footerLogoHeight = Math.round(72 * websiteLogoScale / 100);
   const footerLogoMaxWidth = Math.round(260 * websiteLogoScale / 100);
+
+  useEffect(() => {
+    const routeSeo = getPublicSeo(location.pathname);
+    applySeo({
+      ...routeSeo,
+      path: routeSeo.path ?? location.pathname,
+    });
+  }, [location.pathname, page, school?.name]);
 
   if (loading) {
     return <LoadingScreen showText={false} tone="plain" />;
