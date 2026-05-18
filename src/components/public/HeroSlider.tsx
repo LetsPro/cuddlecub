@@ -10,14 +10,27 @@ interface HeroSliderProps {
 }
 
 const highlightChips = [
-  { label: 'Playful learning', icon: Sparkles },
-  { label: 'Caring teachers', icon: Heart },
-  { label: 'Creative spaces', icon: Palette },
+  { label: 'Playful learning', icon: Sparkles, iconClass: 'bg-amber-100 text-amber-600' },
+  { label: 'Caring teachers', icon: Heart, iconClass: 'bg-rose-100 text-rose-600' },
+  { label: 'Creative spaces', icon: Palette, iconClass: 'bg-sky-100 text-sky-600' },
 ];
 
-const openingTagline = 'Where gentle care meets global success';
-
 const fallbackSlideColors = ['#e56ea6', '#3f97d1', '#d98a18'];
+const eyebrowStyles = [
+  '!border-amber-200 !bg-amber-50 !text-amber-800 shadow-amber-950/10',
+  '!border-sky-200 !bg-sky-50 !text-sky-800 shadow-sky-950/10',
+  '!border-rose-200 !bg-rose-50 !text-rose-800 shadow-rose-950/10',
+];
+const eyebrowIconStyles = ['bg-amber-400 text-white', 'bg-sky-400 text-white', 'bg-rose-400 text-white'];
+
+function cleanHeroSubtitle(subtitle: string) {
+  return subtitle
+    .replace(/([A-Za-z0-9)])\s+where gentle care meets global success\.?\s*/gi, '$1. ')
+    .replace(/\bwhere gentle care meets global success\.?\s*/gi, '')
+    .replace(/\s+([.,!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 function warmImage(url: string, warmedUrls: Set<string>, onReady?: (url: string) => void) {
   if (!url || warmedUrls.has(url) || typeof window === 'undefined') {
@@ -80,7 +93,9 @@ export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: Her
       <div className="pointer-events-none absolute right-6 top-6 hidden gap-3 lg:flex lg:flex-col">
         {highlightChips.map((chip) => (
           <div key={chip.label} className="kids-hero-chip text-sm font-bold text-slate-900">
-            <chip.icon className="h-4 w-4" />
+            <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${chip.iconClass}`}>
+              <chip.icon className="h-4 w-4" />
+            </span>
             {chip.label}
           </div>
         ))}
@@ -89,6 +104,9 @@ export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: Her
         const isActive = index === activeIndex;
         const canRenderImage = Boolean(slide.image_url) && !failedUrls.has(slide.image_url);
         const shouldLoadImage = canRenderImage && (isActive || index === nextIndex || readyUrls.has(slide.image_url));
+        const subtitle = cleanHeroSubtitle(slide.subtitle);
+        const eyebrowClass = eyebrowStyles[index % eyebrowStyles.length];
+        const eyebrowIconClass = eyebrowIconStyles[index % eyebrowIconStyles.length];
 
         return (
           <div
@@ -101,7 +119,6 @@ export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: Her
                   alt={slide.title}
                   className="h-full w-full object-cover"
                   decoding="async"
-                  fetchPriority={isActive ? 'high' : 'low'}
                   loading={isActive ? 'eager' : 'lazy'}
                   onLoad={() => markUrlReady(slide.image_url)}
                   onError={() =>
@@ -114,7 +131,9 @@ export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: Her
                   sizes="(min-width: 1440px) 1400px, 100vw"
                   src={slide.image_url}
                 />
-                <div className="absolute inset-0 bg-slate-950/42" />
+                <div className="absolute inset-0 bg-slate-950/45" />
+                <div className="absolute inset-0 bg-gradient-to-r from-slate-950/78 via-slate-950/38 to-slate-950/8" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/62 via-transparent to-slate-950/18" />
               </div>
             ) : (
               <div
@@ -128,19 +147,20 @@ export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: Her
             )}
             <div className="relative flex min-h-[460px] items-end p-6 sm:min-h-[540px] sm:p-12 lg:min-h-[620px] lg:p-16">
               <div className="max-w-3xl text-white">
-                <div className="kids-badge !border-white/90 !bg-white !text-slate-900">
-                  <Star className="h-4 w-4" />
+                <div className={`kids-badge ${eyebrowClass}`}>
+                  <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${eyebrowIconClass}`}>
+                    <Star className="h-3.5 w-3.5" />
+                  </span>
                   {slide.eyebrow || 'Welcome'}
                 </div>
                 <h1 className="mt-5 font-serif text-3xl leading-tight sm:text-5xl lg:text-6xl">{slide.title}</h1>
-                <p className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/85 sm:text-base">
-                  {openingTagline}
-                </p>
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-white/90 sm:text-lg">{slide.subtitle}</p>
+                {subtitle ? <p className="mt-5 max-w-2xl text-sm leading-7 text-white/90 sm:text-lg">{subtitle}</p> : null}
                 <div className="mt-5 hidden flex-wrap gap-3 sm:flex">
                   {highlightChips.map((chip) => (
                     <div key={chip.label} className="kids-pill !border-white/90 !bg-white !text-slate-900">
-                      <chip.icon className="h-4 w-4" />
+                      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${chip.iconClass}`}>
+                        <chip.icon className="h-4 w-4" />
+                      </span>
                       {chip.label}
                     </div>
                   ))}
@@ -149,9 +169,6 @@ export function HeroSlider({ slides, autoScroll = true, intervalMs = 5200 }: Her
                   <Link className="button-primary w-full justify-center gap-2 !rounded-full !px-6 sm:w-auto" to={slide.cta_href || '/programs'}>
                     {slide.cta_label || 'Explore'}
                     <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link className="button-secondary w-full justify-center !rounded-full !border-white/90 !bg-white !px-6 !text-slate-900 hover:!bg-white/90 sm:w-auto" to="/login">
-                    Login
                   </Link>
                 </div>
               </div>
