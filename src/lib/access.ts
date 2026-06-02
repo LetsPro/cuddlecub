@@ -108,6 +108,27 @@ export async function sendManagedPasswordReset(email: string) {
   }
 }
 
+export async function updateManagedUserPassword(userId: string, password: string) {
+  if (!userId) {
+    throw new Error('User account is required to update a password.');
+  }
+
+  if (password.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
+  }
+
+  const { error } = await supabase.functions.invoke('update-managed-user-password', {
+    body: {
+      userId,
+      password,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function syncManagedProfile({ userId, schoolId, fullName, phone, role, isActive }: ManagedProfileParams) {
   const { error } = await supabase
     .from('profiles')

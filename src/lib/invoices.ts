@@ -1,382 +1,365 @@
-import { getKidsFontOption, getKidsFontStyle } from './branding';
-import { getThemeColors } from './theme';
-import { formatCurrency, formatDate } from './utils';
+import { formatDate } from './utils';
 import type { FeeInvoice, FeePayment, School } from '../types/app';
 
 interface BrandedInvoicePdfOptions {
   school: School;
   invoice: FeeInvoice;
   studentName: string;
+  parentName?: string;
+  admissionNumber?: string;
+  feeStructureName?: string;
+  totalFee?: number;
   payments?: FeePayment[];
 }
 
-function escapeHtml(value: string | null | undefined) {
-  return (value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+interface PdfImage {
+  data: Uint8Array;
+  width: number;
+  height: number;
 }
 
-export function openBrandedInvoicePdf({ school, invoice, studentName, payments = [] }: BrandedInvoicePdfOptions) {
-  const invoiceWindow = window.open('', '_blank', 'width=960,height=1200');
+interface PdfImages {
+  logo: PdfImage | null;
+  signature: PdfImage | null;
+}
 
-  if (!invoiceWindow) {
-    throw new Error('Allow pop-ups in the browser to generate the branded PDF invoice.');
+function sanitizePdfText(value: string | number | null | undefined) {
+  return String(value ?? '')
+    .replace(/[₹]/g, 'INR ')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .trim();
+}
+
+function formatPdfCurrency(amount: number | null | undefined) {
+  return `INR ${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(amount ?? 0)}`;
+}
+
+function buildInstallments(amount: number, count = 3) {
+  const baseAmount = Math.floor(amount / count);
+  const remainder = amount - baseAmount * count;
+
+  return Array.from({ length: count }, (_, index) => baseAmount + (index === count - 1 ? remainder : 0));
+}
+
+function getStoredInstallments(invoice: FeeInvoice) {
+  return Array.isArray(invoice.installment_plan) && invoice.installment_plan.length > 0
+    ? invoice.installment_plan
+    : buildInstallments(invoice.amount_due).map((amount, index) => ({
+        label: `Installment ${index + 1}`,
+        due_date: '',
+        amount,
+      }));
+}
+
+function textWidth(value: string, size: number) {
+  return sanitizePdfText(value).length * size * 0.52;
+}
+
+async function loadImageAsJpeg(url: string | null | undefined): Promise<PdfImage | null> {
+  if (!url) return null;
+
+  try {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.src = url;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Logo could not be loaded.'));
+    });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || 320;
+    canvas.height = image.naturalHeight || 320;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    const [, base64] = dataUrl.split(',');
+    const binary = atob(base64);
+    const data = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      data[index] = binary.charCodeAt(index);
+    }
+
+    return {
+      data,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function createPdf(contentStreams: string | string[], images: PdfImages) {
+  const encoder = new TextEncoder();
+  const streams = Array.isArray(contentStreams) ? contentStreams : [contentStreams];
+  const pageIds = streams.map((_, index) => 3 + index);
+  const contentIds = streams.map((_, index) => 3 + streams.length + index);
+  const font1Id = 3 + streams.length * 2;
+  const font2Id = font1Id + 1;
+  const font3Id = font1Id + 2;
+  let nextObjectId = font3Id + 1;
+  const logoId = images.logo ? nextObjectId++ : null;
+  const signatureId = images.signature ? nextObjectId++ : null;
+  const watermarkId = images.logo || images.signature ? nextObjectId++ : null;
+  const xObjects = [
+    logoId ? `/Logo ${logoId} 0 R` : null,
+    signatureId ? `/Signature ${signatureId} 0 R` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const extGState = watermarkId ? `/ExtGState << /Watermark ${watermarkId} 0 R >>` : '';
+  const resources = xObjects
+    ? `/Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R /F3 ${font3Id} 0 R >> /XObject << ${xObjects} >> ${extGState} >>`
+    : `/Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R /F3 ${font3Id} 0 R >> >>`;
+  const baseObjects: Array<string | Uint8Array> = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${streams.length} >>`,
+  ];
+  streams.forEach((_, index) => {
+    baseObjects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] ${resources} /Contents ${contentIds[index]} 0 R >>`);
+  });
+  streams.forEach((stream) => {
+    baseObjects.push(`<< /Length ${encoder.encode(stream).length} >>\nstream\n${stream}\nendstream`);
+  });
+  baseObjects.push(
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >>',
+  );
+  const parts: Uint8Array[] = [];
+  let byteLength = 0;
+  const offsets = [0];
+  const addPart = (part: string | Uint8Array) => {
+    const bytes = typeof part === 'string' ? encoder.encode(part) : part;
+    parts.push(bytes);
+    byteLength += bytes.length;
+  };
+
+  addPart('%PDF-1.4\n');
+  baseObjects.forEach((object, index) => {
+    offsets.push(byteLength);
+    addPart(`${index + 1} 0 obj\n${object}\nendobj\n`);
+  });
+
+  if (images.logo && logoId) {
+    offsets.push(byteLength);
+    addPart(`${logoId} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${images.logo.width} /Height ${images.logo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${images.logo.data.length} >>\nstream\n`);
+    addPart(images.logo.data);
+    addPart('\nendstream\nendobj\n');
   }
 
+  if (images.signature && signatureId) {
+    offsets.push(byteLength);
+    addPart(`${signatureId} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${images.signature.width} /Height ${images.signature.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${images.signature.data.length} >>\nstream\n`);
+    addPart(images.signature.data);
+    addPart('\nendstream\nendobj\n');
+  }
+
+  if (watermarkId) {
+    offsets.push(byteLength);
+    addPart(`${watermarkId} 0 obj\n<< /Type /ExtGState /ca 0.24 >>\nendobj\n`);
+  }
+
+  const xrefOffset = byteLength;
+  const objectCount = offsets.length;
+  addPart(`xref\n0 ${objectCount}\n0000000000 65535 f \n`);
+  offsets.slice(1).forEach((offset) => {
+    addPart(`${String(offset).padStart(10, '0')} 00000 n \n`);
+  });
+  addPart(`trailer\n<< /Size ${objectCount} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+
+  return new Blob(
+    parts.map((part) => part.buffer.slice(part.byteOffset, part.byteOffset + part.byteLength) as ArrayBuffer),
+    { type: 'application/pdf' },
+  );
+}
+
+export async function openBrandedInvoicePdf({
+  school,
+  invoice,
+  studentName,
+  parentName = 'Parent',
+  admissionNumber = 'Not set',
+  feeStructureName = 'School fee',
+  totalFee,
+  payments = [],
+}: BrandedInvoicePdfOptions) {
   const settings = (school.settings ?? {}) as Record<string, unknown>;
-  const { primary, secondary } = getThemeColors(school);
-  const fontOption = getKidsFontOption(getKidsFontStyle(settings));
-  const balanceAmount = Math.max(0, invoice.amount_due - (invoice.amount_paid ?? 0));
-  const paymentRows = payments
+  const grossFee = totalFee ?? invoice.amount_due;
+  const paidAmount = invoice.amount_paid ?? 0;
+  const discountAmount = Math.max(0, grossFee - invoice.amount_due);
+  const balanceAmount = Math.max(0, invoice.amount_due - paidAmount);
+  const invoicePayments = payments
     .filter((payment) => payment.fee_invoice_id === invoice.id)
     .sort((left, right) => left.payment_date.localeCompare(right.payment_date));
-  const paymentMarkup =
-    paymentRows.length > 0
-      ? paymentRows
-          .map(
-            (payment) => `
-              <tr>
-                <td>${escapeHtml(formatDate(payment.payment_date))}</td>
-                <td>${escapeHtml(payment.payment_mode.split('_').join(' '))}</td>
-                <td>${escapeHtml(formatCurrency(payment.amount))}</td>
-                <td>${escapeHtml(payment.status.split('_').join(' '))}</td>
-              </tr>
-            `,
-          )
-          .join('')
-      : `
-        <tr>
-          <td colspan="4" class="empty-state">No payments recorded yet for this invoice.</td>
-        </tr>
-      `;
+  const installments = getStoredInstallments(invoice);
+  const logo = await loadImageAsJpeg(school.logo_url);
+  const signatureUrl = typeof settings.invoice_signature_url === 'string' ? settings.invoice_signature_url : '';
+  const signature = await loadImageAsJpeg(signatureUrl);
+  const commands: string[] = [];
+  const footerCommands: string[] = [];
+  let activeCommands = commands;
 
-  const documentTitle = `${invoice.invoice_number} - ${school.name}`;
-  const logoMarkup = school.logo_url
-    ? `<img alt="${escapeHtml(school.name)} logo" class="school-logo" src="${escapeHtml(school.logo_url)}" />`
-    : `<div class="school-badge">${escapeHtml(
-        school.name
-          .split(' ')
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((part) => part[0]?.toUpperCase() ?? '')
-          .join('') || 'SC',
-      )}</div>`;
+  function text(value: string | number | null | undefined, x: number, y: number, size = 10, font = 'F1') {
+    activeCommands.push(`BT /${font} ${size} Tf ${x} ${y} Td (${sanitizePdfText(value)}) Tj ET`);
+  }
 
-  invoiceWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>${escapeHtml(documentTitle)}</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
-        <style>
-          :root {
-            --invoice-primary: ${primary};
-            --invoice-secondary: ${secondary};
-            --invoice-display-font: ${fontOption.displayStack};
-            --invoice-body-font: ${fontOption.bodyStack};
-          }
+  function line(x1: number, y1: number, x2: number, y2: number, width = 1) {
+    activeCommands.push(`${width} w ${x1} ${y1} m ${x2} ${y2} l S`);
+  }
 
-          * {
-            box-sizing: border-box;
-          }
+  function rect(x: number, y: number, width: number, height: number) {
+    activeCommands.push(`${x} ${y} ${width} ${height} re S`);
+  }
 
-          body {
-            margin: 0;
-            padding: 32px;
-            font-family: var(--invoice-body-font);
-            color: #1e293b;
-            background:
-              radial-gradient(circle at top left, color-mix(in srgb, var(--invoice-primary) 18%, white), transparent 26%),
-              radial-gradient(circle at top right, color-mix(in srgb, var(--invoice-secondary) 18%, white), transparent 28%),
-              linear-gradient(180deg, #fffaf5, #ffffff 42%, #f8fbff);
-          }
+  function image(name: string, x: number, y: number, width: number, height: number) {
+    activeCommands.push(`q ${width} 0 0 ${height} ${x} ${y} cm /${name} Do Q`);
+  }
 
-          .sheet {
-            max-width: 860px;
-            margin: 0 auto;
-            border-radius: 28px;
-            overflow: hidden;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            background: rgba(255, 255, 255, 0.96);
-            box-shadow: 0 32px 80px -52px rgba(15, 23, 42, 0.32);
-          }
+  function centered(value: string, centerX: number, y: number, size = 10, font = 'F1') {
+    text(value, centerX - textWidth(value, size) / 2, y, size, font);
+  }
 
-          .hero {
-            padding: 32px;
-            color: white;
-            background:
-              radial-gradient(circle at top left, rgba(255, 255, 255, 0.24), transparent 26%),
-              linear-gradient(135deg, var(--invoice-primary), var(--invoice-secondary));
-          }
+  function centeredFit(value: string, centerX: number, y: number, maxWidth: number, size = 10, font = 'F1', minSize = 7) {
+    let nextSize = size;
+    while (textWidth(value, nextSize) > maxWidth && nextSize > minSize) {
+      nextSize -= 1;
+    }
+    centered(value, centerX, y, nextSize, font);
+  }
 
-          .hero-top {
-            display: flex;
-            justify-content: space-between;
-            gap: 24px;
-            align-items: flex-start;
-          }
+  function field(label: string, value: string, x: number, y: number) {
+    text(label, x, y, 11, 'F2');
+    text(value, x + 92, y, 11, 'F1');
+  }
 
-          .brand {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-          }
+  commands.push('0.10 0.14 0.22 RG');
+  if (logo) {
+    commands.push('q /Watermark gs');
+    image('Logo', 155, 250, 290, 290);
+    commands.push('Q');
+  }
 
-          .school-logo,
-          .school-badge {
-            width: 72px;
-            height: 72px;
-            border-radius: 22px;
-            object-fit: cover;
-            background: rgba(255, 255, 255, 0.18);
-            border: 1px solid rgba(255, 255, 255, 0.22);
-          }
+  text('Fee Invoice', 456, 790, 14, 'F2');
+  if (logo) {
+    image('Logo', 54, 740, 74, 74);
+  } else {
+    rect(54, 740, 74, 74);
+    text('LOGO', 77, 776, 10, 'F2');
+  }
+  commands.push('0.345 0.435 0.353 rg');
+  centeredFit(school.name, 308, 754, 390, 21, 'F2', 14);
+  commands.push('0.10 0.14 0.22 rg');
+  centeredFit(school.address ?? 'Address', 308, 728, 400, 11, 'F1', 8);
 
-          .school-badge {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--invoice-display-font);
-            font-size: 26px;
-            font-weight: 700;
-          }
+  field('Student', studentName, 62, 676);
+  field('Date', formatDate(invoice.due_date), 330, 676);
+  field('Parent', parentName, 62, 648);
+  field('Status', invoice.status.split('_').join(' '), 330, 648);
+  field('Program', feeStructureName, 62, 620);
+  field('Receipt No.', invoice.receipt_number ?? invoice.invoice_number, 62, 592);
+  field('Admission No.', admissionNumber, 62, 564);
 
-          .eyebrow,
-          .label {
-            text-transform: uppercase;
-            letter-spacing: 0.18em;
-            font-size: 11px;
-            font-weight: 700;
-          }
+  rect(62, 432, 476, 92);
+  line(300, 432, 300, 524, 1);
+  line(62, 494, 538, 494, 1);
+  line(62, 462, 538, 462, 1);
+  text('Total fee', 82, 504, 13, 'F2');
+  text(formatPdfCurrency(grossFee), 326, 504, 13, 'F2');
+  text('Discount', 82, 473, 13, 'F2');
+  text(formatPdfCurrency(discountAmount), 326, 473, 13, 'F2');
+  text('Fee to be paid', 82, 442, 13, 'F2');
+  text(formatPdfCurrency(invoice.amount_due), 326, 442, 13, 'F2');
 
-          .school-name,
-          .invoice-title {
-            margin: 8px 0 0;
-            font-family: var(--invoice-display-font);
-          }
+  text('Installment schedule', 62, 398, 12, 'F2');
+  const visibleInstallments = installments.slice(0, 5);
+  const installmentTop = 380;
+  const installmentHeight = 28 + Math.max(1, visibleInstallments.length) * 22;
+  const installmentBottom = installmentTop - installmentHeight;
+  rect(62, installmentBottom, 476, installmentHeight);
+  line(300, installmentBottom, 300, installmentTop, 1);
+  line(62, installmentTop - 28, 538, installmentTop - 28, 1);
+  visibleInstallments.forEach((installment, index) => {
+    const y = installmentTop - 46 - index * 22;
+    if (index > 0) {
+      line(62, y + 14, 538, y + 14, 0.8);
+    }
+    text(`${installment.label}${installment.due_date ? ` - ${formatDate(installment.due_date)}` : ''}`, 82, y, 11, 'F1');
+    text(formatPdfCurrency(installment.amount), 326, y, 11, 'F1');
+  });
+  const balanceTop = installmentBottom - 2;
+  rect(62, balanceTop - 32, 476, 32);
+  line(300, balanceTop - 32, 300, balanceTop, 1);
+  text('Amount balance', 82, balanceTop - 20, 12, 'F2');
+  text(formatPdfCurrency(balanceAmount), 326, balanceTop - 20, 12, 'F2');
 
-          .school-name {
-            font-size: 34px;
-            line-height: 1.05;
-          }
+  let footerY = balanceTop - 64;
+  if (invoicePayments.length > 0) {
+    const paymentRows = invoicePayments.slice(0, 4);
+    const paymentTop = balanceTop - 64;
+    const paymentHeight = 28 + paymentRows.length * 20;
+    const paymentBottom = paymentTop - paymentHeight;
+    text('Payment history', 62, paymentTop + 16, 12, 'F2');
+    rect(62, paymentBottom, 476, paymentHeight);
+    line(62, paymentTop - 28, 538, paymentTop - 28, 1);
+    line(180, paymentBottom, 180, paymentTop, 0.8);
+    line(300, paymentBottom, 300, paymentTop, 0.8);
+    line(420, paymentBottom, 420, paymentTop, 0.8);
+    text('Date', 78, paymentTop - 18, 9, 'F2');
+    text('Mode', 196, paymentTop - 18, 9, 'F2');
+    text('Amount', 316, paymentTop - 18, 9, 'F2');
+    text('Status', 436, paymentTop - 18, 9, 'F2');
+    paymentRows.forEach((payment, index) => {
+      const y = paymentTop - 48 - index * 20;
+      text(formatDate(payment.payment_date), 78, y, 9, 'F1');
+      text(payment.payment_mode.split('_').join(' '), 196, y, 9, 'F1');
+      text(formatPdfCurrency(payment.amount), 316, y, 9, 'F1');
+      text(payment.status.split('_').join(' '), 436, y, 9, 'F1');
+    });
+    text(`Received total payment of ${formatPdfCurrency(paidAmount)}`, 62, paymentBottom - 28, 14, 'F2');
+    footerY = paymentBottom - 64;
+  }
 
-          .brand-meta,
-          .invoice-meta {
-            margin-top: 8px;
-            font-size: 14px;
-            line-height: 1.7;
-            color: rgba(255, 255, 255, 0.9);
-          }
+  if (footerY < 92) {
+    activeCommands = footerCommands;
+    footerCommands.push('0.10 0.14 0.22 RG');
+    footerCommands.push('0.10 0.14 0.22 rg');
+    if (logo) {
+      footerCommands.push('q /Watermark gs');
+      image('Logo', 155, 250, 290, 290);
+      footerCommands.push('Q');
+    }
+    footerY = 680;
+  }
 
-          .invoice-card {
-            min-width: 240px;
-            padding: 18px 20px;
-            border-radius: 24px;
-            background: rgba(255, 255, 255, 0.16);
-            backdrop-filter: blur(12px);
-          }
+  text('Contact details', 62, footerY, 10, 'F2');
+  text('Website: cuddlecubpreschool.com', 62, footerY - 16, 9, 'F1');
+  text(school.contact_phone ? `Phone: ${school.contact_phone}` : 'Phone:', 62, footerY - 30, 9, 'F1');
+  text(school.contact_email ? `Email: ${school.contact_email}` : 'Email:', 62, footerY - 44, 9, 'F1');
+  if (signature) {
+    image('Signature', 406, footerY - 8, 124, 46);
+  }
+  text('Signature / Seal', 426, footerY - 44, 10, 'F2');
 
-          .invoice-title {
-            font-size: 28px;
-          }
-
-          .content {
-            padding: 32px;
-          }
-
-          .summary-grid,
-          .meta-grid {
-            display: grid;
-            gap: 16px;
-          }
-
-          .summary-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-          }
-
-          .meta-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            margin-top: 28px;
-          }
-
-          .summary-card,
-          .meta-card {
-            border-radius: 24px;
-            padding: 18px 20px;
-            border: 1px solid rgba(226, 232, 240, 0.88);
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
-          }
-
-          .summary-value {
-            margin-top: 10px;
-            font-family: var(--invoice-display-font);
-            font-size: 28px;
-            color: #0f172a;
-          }
-
-          .meta-value {
-            margin-top: 8px;
-            font-size: 16px;
-            font-weight: 700;
-            color: #0f172a;
-          }
-
-          .section-title {
-            margin: 32px 0 14px;
-            font-family: var(--invoice-display-font);
-            font-size: 24px;
-            color: #0f172a;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            overflow: hidden;
-            border-radius: 22px;
-            border: 1px solid rgba(226, 232, 240, 0.88);
-          }
-
-          th,
-          td {
-            padding: 14px 16px;
-            text-align: left;
-            border-bottom: 1px solid rgba(226, 232, 240, 0.72);
-            font-size: 14px;
-          }
-
-          th {
-            background: rgba(248, 250, 252, 0.96);
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.14em;
-            color: #64748b;
-          }
-
-          tr:last-child td {
-            border-bottom: none;
-          }
-
-          .empty-state {
-            color: #64748b;
-          }
-
-          .footer-note {
-            margin-top: 24px;
-            border-radius: 24px;
-            padding: 18px 20px;
-            background: rgba(248, 250, 252, 0.92);
-            color: #475569;
-            font-size: 13px;
-            line-height: 1.7;
-          }
-
-          @media print {
-            body {
-              padding: 0;
-              background: white;
-            }
-
-            .sheet {
-              border: none;
-              box-shadow: none;
-              border-radius: 0;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <main class="sheet">
-          <section class="hero">
-            <div class="hero-top">
-              <div class="brand">
-                ${logoMarkup}
-                <div>
-                  <div class="eyebrow">School Invoice</div>
-                  <h1 class="school-name">${escapeHtml(school.name)}</h1>
-                  <div class="brand-meta">
-                    ${school.academic_year_label ? `${escapeHtml(school.academic_year_label)}<br />` : ''}
-                    ${school.address ? `${escapeHtml(school.address)}<br />` : ''}
-                    ${school.contact_phone ? `${escapeHtml(school.contact_phone)}<br />` : ''}
-                    ${school.contact_email ? escapeHtml(school.contact_email) : ''}
-                  </div>
-                </div>
-              </div>
-
-              <div class="invoice-card">
-                <div class="label">Invoice reference</div>
-                <h2 class="invoice-title">${escapeHtml(invoice.invoice_number)}</h2>
-                <div class="invoice-meta">
-                  Status: ${escapeHtml(invoice.status.split('_').join(' '))}<br />
-                  Due: ${escapeHtml(formatDate(invoice.due_date))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="content">
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="label">Amount due</div>
-                <div class="summary-value">${escapeHtml(formatCurrency(invoice.amount_due))}</div>
-              </div>
-              <div class="summary-card">
-                <div class="label">Paid so far</div>
-                <div class="summary-value">${escapeHtml(formatCurrency(invoice.amount_paid ?? 0))}</div>
-              </div>
-              <div class="summary-card">
-                <div class="label">Balance</div>
-                <div class="summary-value">${escapeHtml(formatCurrency(balanceAmount))}</div>
-              </div>
-            </div>
-
-            <div class="meta-grid">
-              <div class="meta-card">
-                <div class="label">Student</div>
-                <div class="meta-value">${escapeHtml(studentName)}</div>
-              </div>
-              <div class="meta-card">
-                <div class="label">Font style</div>
-                <div class="meta-value">${escapeHtml(fontOption.label)}</div>
-              </div>
-            </div>
-
-            <h3 class="section-title">Payment history</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Mode</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${paymentMarkup}
-              </tbody>
-            </table>
-
-            <div class="footer-note">
-              This branded invoice PDF uses your school logo, theme colors and selected kids font style from settings. Save the browser print dialog as PDF to download or share it.
-            </div>
-          </section>
-        </main>
-      </body>
-    </html>
-  `);
-
-  invoiceWindow.document.close();
-  invoiceWindow.onload = () => {
-    window.setTimeout(() => {
-      invoiceWindow.focus();
-      invoiceWindow.print();
-    }, 500);
-  };
+  const pageStreams = footerCommands.length > 0 ? [commands.join('\n'), footerCommands.join('\n')] : commands.join('\n');
+  const pdf = createPdf(pageStreams, { logo, signature });
+  downloadBlob(pdf, `${invoice.invoice_number || 'invoice'}.pdf`);
 }

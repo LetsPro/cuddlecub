@@ -110,6 +110,7 @@ create table if not exists public.parents (
   address text,
   emergency_contact_name text,
   emergency_contact_phone text,
+  portal_password text,
   notification_preferences jsonb not null default '{}'::jsonb,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -356,6 +357,7 @@ create table if not exists public.fee_invoices (
   amount_paid numeric(12, 2) not null default 0,
   status text not null default 'pending',
   receipt_number text,
+  installment_plan jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (school_id, invoice_number)
@@ -369,6 +371,7 @@ create table if not exists public.fee_payments (
   payment_date date not null default current_date,
   payment_mode text not null default 'cash',
   status text not null default 'paid',
+  installment_label text,
   transaction_reference text,
   created_at timestamptz not null default now()
 );

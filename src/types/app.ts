@@ -151,6 +151,7 @@ export interface ParentRecord {
   access_invited_at?: string | null;
   password_reset_sent_at?: string | null;
   last_login_at?: string | null;
+  portal_password?: string | null;
 }
 
 export interface StaffRecord {
@@ -316,11 +317,15 @@ export interface FeeStructure {
 export interface FeeInvoice {
   id: string;
   student_id: string;
+  fee_structure_id: string | null;
   invoice_number: string;
   due_date: string;
   amount_due: number;
   amount_paid: number;
   status: string;
+  receipt_number?: string | null;
+  installment_plan?: Array<{ label: string; due_date: string; amount: number }> | null;
+  created_at?: string;
 }
 
 export interface FeePayment {
@@ -330,6 +335,7 @@ export interface FeePayment {
   payment_date: string;
   payment_mode: string;
   status: string;
+  installment_label?: string | null;
 }
 
 export interface NotificationRecord {

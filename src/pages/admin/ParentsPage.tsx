@@ -11,8 +11,8 @@ import {
   deriveEnabledPortalAccessStatus,
   derivePortalAccessStatus,
   generateTemporaryPassword,
-  sendManagedPasswordReset,
   syncManagedProfile,
+  updateManagedUserPassword,
 } from '../../lib/access';
 import { useAppContext } from '../../lib/app-context';
 import { getErrorMessage, supabase } from '../../lib/supabase';
@@ -28,6 +28,7 @@ const emptyForm = {
   address: '',
   emergency_contact_name: '',
   emergency_contact_phone: '',
+  password: '',
   is_active: true,
 };
 
@@ -36,6 +37,30 @@ interface GeneratedCredential {
   fullName: string;
   email: string;
   temporaryPassword: string;
+}
+
+function isMissingPortalPasswordColumn(error: unknown) {
+  return getErrorMessage(error).toLowerCase().includes('portal_password');
+}
+
+function getCredentialStorageKey(schoolId: string) {
+  return `cuddlecub-parent-credentials:${schoolId}`;
+}
+
+function readStoredCredentials(schoolId: string): Record<string, GeneratedCredential> {
+  try {
+    return JSON.parse(localStorage.getItem(getCredentialStorageKey(schoolId)) ?? '{}') as Record<string, GeneratedCredential>;
+  } catch {
+    return {};
+  }
+}
+
+function storeCredentials(schoolId: string, credentials: Record<string, GeneratedCredential>) {
+  try {
+    localStorage.setItem(getCredentialStorageKey(schoolId), JSON.stringify(credentials));
+  } catch {
+    // The password is still visible for this session even if browser storage is unavailable.
+  }
 }
 
 export function ParentsPage() {
@@ -50,9 +75,14 @@ export function ParentsPage() {
   const [busyAccessId, setBusyAccessId] = useState<string | null>(null);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [generatedCredential, setGeneratedCredential] = useState<GeneratedCredential | null>(null);
+  const [generatedCredentials, setGeneratedCredentials] = useState<Record<string, GeneratedCredential>>({});
 
   useEffect(() => {
     void loadParents();
+  }, [school.id]);
+
+  useEffect(() => {
+    setGeneratedCredentials(readStoredCredentials(school.id));
   }, [school.id]);
 
   async function loadParents() {
@@ -107,6 +137,7 @@ export function ParentsPage() {
       address: parent.address ?? '',
       emergency_contact_name: parent.emergency_contact_name ?? '',
       emergency_contact_phone: parent.emergency_contact_phone ?? '',
+      password: parent.portal_password ?? generatedCredentials[parent.id]?.temporaryPassword ?? '',
       is_active: parent.is_active,
     });
     setGeneratedCredential(null);
@@ -153,13 +184,25 @@ export function ParentsPage() {
       notification_preferences: { channel: 'dashboard' },
       is_active: form.is_active,
     };
+    const payloadWithPassword = {
+      ...payload,
+      portal_password: form.password || null,
+    };
 
     try {
+      let passwordSyncFailed = false;
+
       if (editingParentId) {
-        const { error } = await supabase.from('parents').update(payload).eq('id', editingParentId);
+        let { error } = await supabase.from('parents').update(payloadWithPassword).eq('id', editingParentId);
+        if (error && isMissingPortalPasswordColumn(error)) {
+          ({ error } = await supabase.from('parents').update(payload).eq('id', editingParentId));
+        }
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('parents').insert(payload);
+        let { error } = await supabase.from('parents').insert(payloadWithPassword);
+        if (error && isMissingPortalPasswordColumn(error)) {
+          ({ error } = await supabase.from('parents').insert(payload));
+        }
         if (error) throw error;
       }
 
@@ -172,11 +215,47 @@ export function ParentsPage() {
           role: 'parent',
           isActive: payload.is_active,
         });
+
+        if (form.password) {
+          try {
+            await updateManagedUserPassword(currentParent.user_id, form.password);
+          } catch {
+            passwordSyncFailed = true;
+            // Keep the admin-managed password visible even when the optional Edge Function is not deployed.
+          }
+          setGeneratedCredential({
+            parentId: currentParent.id,
+            fullName: payload.full_name,
+            email: currentParent.email ?? form.email,
+            temporaryPassword: form.password,
+          });
+          setGeneratedCredentials((current) => {
+            const nextCredentials = {
+              ...current,
+              [currentParent.id]: {
+                parentId: currentParent.id,
+                fullName: payload.full_name,
+                email: currentParent.email ?? form.email,
+                temporaryPassword: form.password,
+              },
+            };
+            storeCredentials(school.id, nextCredentials);
+            return nextCredentials;
+          });
+        }
       }
 
       await loadParents();
       closeFormModal();
-      setMessage(isEditing ? 'Parent updated.' : 'Parent added.');
+      setMessage(
+        isEditing
+          ? form.password
+            ? passwordSyncFailed
+              ? 'Parent updated. Password saved for admin display.'
+              : 'Parent updated and password changed.'
+            : 'Parent updated.'
+          : 'Parent added.',
+      );
     } catch (error) {
       setMessage(getErrorMessage(error));
     }
@@ -189,7 +268,7 @@ export function ParentsPage() {
     }
 
     if (parent.user_id) {
-      setMessage('This parent already has a linked login. Use reset link instead.');
+      setMessage('This parent already has a linked login. Edit the parent to change the password.');
       return;
     }
 
@@ -198,19 +277,29 @@ export function ParentsPage() {
     setMessage(null);
 
     try {
+      const email = parent.email;
       const temporaryPassword = generateTemporaryPassword();
-      const user = await createManagedUserAccount(parent.email, temporaryPassword);
+      const user = await createManagedUserAccount(email, temporaryPassword);
       const accessInvitedAt = new Date().toISOString();
 
-      const { error } = await supabase
+      const parentLoginUpdate = {
+        user_id: user.id,
+        access_status: parent.is_active ? 'invited' : 'disabled',
+        access_invited_at: accessInvitedAt,
+      };
+      const parentLoginUpdateWithPassword = {
+        ...parentLoginUpdate,
+        portal_password: temporaryPassword,
+      };
+
+      let { error } = await supabase
         .from('parents')
-        .update({
-          user_id: user.id,
-          access_status: parent.is_active ? 'invited' : 'disabled',
-          access_invited_at: accessInvitedAt,
-        })
+        .update(parentLoginUpdateWithPassword)
         .eq('id', parent.id);
 
+      if (error && isMissingPortalPasswordColumn(error)) {
+        ({ error } = await supabase.from('parents').update(parentLoginUpdate).eq('id', parent.id));
+      }
       if (error) throw error;
 
       await syncManagedProfile({
@@ -227,48 +316,23 @@ export function ParentsPage() {
       setGeneratedCredential({
         parentId: parent.id,
         fullName: parent.full_name,
-        email: parent.email,
+        email,
         temporaryPassword,
       });
-      setMessage('Parent login created. Share the temporary password or send a reset link.');
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    } finally {
-      setBusyAccessId(null);
-    }
-  }
-
-  async function handleSendResetLink(parent: ParentRecord) {
-    if (!parent.email) {
-      setMessage('Add an email address before sending a reset link.');
-      return;
-    }
-
-    if (deriveEnabledPortalAccessStatus(parent) === 'not_created') {
-      setMessage('Create the parent login first, then send a reset link.');
-      return;
-    }
-
-    setBusyAccessId(parent.id);
-    setMessage(null);
-
-    try {
-      const resetSentAt = new Date().toISOString();
-      await sendManagedPasswordReset(parent.email);
-
-      const { error } = await supabase
-        .from('parents')
-        .update({
-          password_reset_sent_at: resetSentAt,
-          access_status: parent.is_active ? deriveEnabledPortalAccessStatus({ ...parent, password_reset_sent_at: resetSentAt }) : 'disabled',
-        })
-        .eq('id', parent.id);
-
-      if (error) throw error;
-
-      const nextParents = await loadParents();
-      syncOpenAccessModal(nextParents, parent.id);
-      setMessage('Password reset link sent to the parent email address.');
+      setGeneratedCredentials((current) => {
+        const nextCredentials = {
+          ...current,
+          [parent.id]: {
+            parentId: parent.id,
+            fullName: parent.full_name,
+            email,
+            temporaryPassword,
+          },
+        };
+        storeCredentials(school.id, nextCredentials);
+        return nextCredentials;
+      });
+      setMessage('Parent login created. Share the temporary password with the parent.');
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -441,6 +505,23 @@ export function ParentsPage() {
               ),
             },
             {
+              key: 'password',
+              label: 'Password',
+              render: (row) => {
+                const credential = generatedCredentials[row.id];
+                const password = row.portal_password ?? credential?.temporaryPassword;
+
+                return password ? (
+                  <div>
+                    <p className="font-mono text-sm text-slate-900">{password}</p>
+                    <p className="mt-1 text-xs text-slate-500">Managed</p>
+                  </div>
+                ) : (
+                  <span className="text-slate-500">Not available</span>
+                );
+              },
+            },
+            {
               key: 'action',
               label: 'Action',
               render: (row) => (
@@ -547,6 +628,31 @@ export function ParentsPage() {
               <p className="text-xs text-slate-500">You can activate or deactivate this account later from access controls.</p>
             </div>
           </label>
+          {editingParent ? (
+            <div className="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4">
+              <div>
+                <label className="form-label">Parent password</label>
+                <input
+                  className="form-input"
+                  disabled={!editingParent.user_id}
+                  minLength={6}
+                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                  placeholder={editingParent.user_id ? 'Enter new password' : 'Create parent login first from Access'}
+                  type="text"
+                  value={form.password}
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  {generatedCredentials[editingParent.id]?.temporaryPassword
+                    ? 'This is the latest temporary password generated in this admin session.'
+                    : editingParent.portal_password
+                      ? 'Edit this password and save changes.'
+                      : editingParent.user_id
+                        ? 'Enter a new password and save to replace the managed password.'
+                        : 'No login exists for this parent yet.'}
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="md:col-span-2 flex justify-end gap-3 pt-2">
             {editingParent ? (
               <button className="button-danger mr-auto gap-2" disabled={busyDeleteId === editingParent.id} onClick={() => void handleDeleteParent(editingParent)} type="button">
@@ -614,7 +720,7 @@ export function ParentsPage() {
               <div className="rounded-[1.75rem] border border-dashed border-slate-300 bg-white px-5 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Temporary password</p>
                 <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 font-mono text-sm text-slate-900">{accessParentCredential.temporaryPassword}</div>
-                <p className="mt-3 text-sm text-slate-500">Share this once with the parent, or use reset link to let them create their own password.</p>
+                <p className="mt-3 text-sm text-slate-500">Share this once with the parent. Password changes are handled from Edit parent.</p>
               </div>
             ) : null}
 
@@ -629,17 +735,7 @@ export function ParentsPage() {
                   <KeyRound className="h-4 w-4" />
                   {busyAccessId === accessParent.id ? 'Creating login...' : 'Create login'}
                 </button>
-              ) : (
-                <button
-                  className="button-primary gap-2"
-                  disabled={busyAccessId === accessParent.id || !accessParent.email}
-                  onClick={() => void handleSendResetLink(accessParent)}
-                  type="button"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  {busyAccessId === accessParent.id ? 'Sending link...' : 'Send reset link'}
-                </button>
-              )}
+              ) : null}
 
               <button className="button-secondary gap-2" disabled={busyAccessId === accessParent.id} onClick={() => void handleToggleAccess(accessParent)} type="button">
                 {accessParent.is_active ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}

@@ -41,6 +41,7 @@ export function SettingsPage() {
     logo_url: school.logo_url ?? '',
     academic_year_label: school.academic_year_label ?? '',
     website_logo_scale: initialWebsiteLogoScale,
+    invoice_signature_url: typeof settings.invoice_signature_url === 'string' ? settings.invoice_signature_url : '',
   });
   const [form, setForm] = useState({
     primary_color: themePrimaryColor,
@@ -60,6 +61,7 @@ export function SettingsPage() {
       logo_url: school.logo_url ?? '',
       academic_year_label: school.academic_year_label ?? '',
       website_logo_scale: getWebsiteLogoScale(nextSettings),
+      invoice_signature_url: typeof nextSettings.invoice_signature_url === 'string' ? nextSettings.invoice_signature_url : '',
     });
     setForm({
       primary_color: typeof nextSettings.theme_primary_color === 'string' ? nextSettings.theme_primary_color : school.primary_color ?? '#f58416',
@@ -86,6 +88,7 @@ export function SettingsPage() {
           settings: {
             ...(school.settings ?? {}),
             website_logo_scale: profileForm.website_logo_scale,
+            invoice_signature_url: profileForm.invoice_signature_url || null,
           },
         })
         .eq('id', school.id);
@@ -183,6 +186,14 @@ export function SettingsPage() {
               onChange={(value) => setProfileForm((current) => ({ ...current, logo_url: value }))}
               previewHeightClassName="h-56"
               value={profileForm.logo_url}
+            />
+
+            <MediaField
+              helperText="Upload the signature or seal image used at the bottom of fee invoice PDFs."
+              label="Invoice signature"
+              onChange={(value) => setProfileForm((current) => ({ ...current, invoice_signature_url: value }))}
+              previewHeightClassName="h-40"
+              value={profileForm.invoice_signature_url}
             />
 
             <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5">
