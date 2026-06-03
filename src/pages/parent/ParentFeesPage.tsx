@@ -14,7 +14,7 @@ import type { FeeInvoice, FeePayment } from '../../types/app';
 
 export function ParentFeesPage() {
   const { school } = useAppContext();
-  const { students, message } = useParentPortal();
+  const { parentRecord, students, message } = useParentPortal();
   const [invoices, setInvoices] = useState<FeeInvoice[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
@@ -54,6 +54,8 @@ export function ParentFeesPage() {
         school,
         invoice,
         studentName: studentNameMap[invoice.student_id] ?? 'Child',
+        parentName: parentRecord?.full_name ?? 'Parent',
+        parentPhone: parentRecord?.whatsapp_number || parentRecord?.phone_number || 'Not set',
         payments,
       });
     } catch (error) {

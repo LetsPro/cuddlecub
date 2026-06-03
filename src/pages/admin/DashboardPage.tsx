@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, Clock3, GraduationCap, Megaphone, UserRound, Users, Wallet } from 'lucide-react';
+import { CalendarDays, Clock3, FileText, GraduationCap, Megaphone, UserRound, Users, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -30,6 +30,7 @@ interface NotificationItem {
   status: string;
   sent_at: string | null;
   scheduled_at: string | null;
+  attachment_url: string | null;
 }
 
 const initialMetrics: DashboardMetrics = {
@@ -105,7 +106,7 @@ export function DashboardPage() {
         supabase.from('students').select('first_name, last_name, dob').eq('school_id', school.id).eq('is_active', true).limit(30),
         supabase.from('staff').select('full_name, dob').eq('school_id', school.id).eq('is_active', true).limit(20),
         supabase.from('events').select('id, title, start_at, event_type').eq('school_id', school.id).gte('start_at', today).order('start_at').limit(5),
-        supabase.from('notifications').select('id, title, channel, status, sent_at, scheduled_at').eq('school_id', school.id).order('created_at', { ascending: false }).limit(5),
+        supabase.from('notifications').select('id, title, channel, status, sent_at, scheduled_at, attachment_url').eq('school_id', school.id).order('created_at', { ascending: false }).limit(5),
       ]);
 
       const studentBirthdayRows = ((studentBirthdays.data ?? []) as Array<{ first_name: string; last_name: string; dob: string }>).map((row) => ({
@@ -267,6 +268,12 @@ export function DashboardPage() {
                     <Clock3 className="h-3.5 w-3.5" />
                     {notification.sent_at ? `Sent ${formatDateTime(notification.sent_at)}` : `Scheduled ${formatDateTime(notification.scheduled_at)}`}
                   </div>
+                  {notification.attachment_url ? (
+                    <a className="mt-3 inline-flex items-center gap-2 text-sm font-bold theme-text-primary" href={notification.attachment_url} rel="noreferrer" target="_blank">
+                      <FileText className="h-4 w-4" />
+                      View attachment
+                    </a>
+                  ) : null}
                 </div>
               ))
             )}

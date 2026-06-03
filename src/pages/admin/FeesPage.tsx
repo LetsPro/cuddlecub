@@ -47,6 +47,7 @@ export function FeesPage() {
   const [invoices, setInvoices] = useState<FeeInvoice[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
   const [parentLookup, setParentLookup] = useState<Record<string, string>>({});
+  const [parentPhoneLookup, setParentPhoneLookup] = useState<Record<string, string>>({});
   const [invoiceForm, setInvoiceForm] = useState(invoiceSeed);
   const [paymentForm, setPaymentForm] = useState(paymentSeed);
   const [installmentsEnabled, setInstallmentsEnabled] = useState(false);
@@ -81,7 +82,7 @@ export function FeesPage() {
         supabase.from('fee_structures').select('*').eq('school_id', school.id).eq('is_active', true).order('name'),
         supabase.from('fee_invoices').select('*').eq('school_id', school.id).order('due_date', { ascending: false }),
         supabase.from('fee_payments').select('*').eq('school_id', school.id).order('payment_date', { ascending: false }),
-        supabase.from('student_parents').select('student_id, is_primary, parents(full_name)').eq('school_id', school.id),
+        supabase.from('student_parents').select('student_id, is_primary, parents(full_name, phone_number, whatsapp_number)').eq('school_id', school.id),
       ]);
 
       if (studentResponse.error) throw studentResponse.error;
@@ -105,6 +106,22 @@ export function FeesPage() {
 
           if (row.is_primary || !accumulator[studentId]) {
             accumulator[studentId] = parentName;
+          }
+
+          return accumulator;
+        }, {}),
+      );
+      setParentPhoneLookup(
+        ((parentResponse.data ?? []) as Array<Record<string, any>>).reduce<Record<string, string>>((accumulator, row) => {
+          const studentId = row.student_id as string | null;
+          const phoneNumber = (row.parents?.whatsapp_number || row.parents?.phone_number) as string | undefined;
+
+          if (!studentId || !phoneNumber) {
+            return accumulator;
+          }
+
+          if (row.is_primary || !accumulator[studentId]) {
+            accumulator[studentId] = phoneNumber;
           }
 
           return accumulator;
@@ -434,6 +451,7 @@ export function FeesPage() {
         invoice,
         studentName: studentLookup[invoice.student_id] ?? 'Student',
         parentName: parentLookup[invoice.student_id] ?? 'Parent',
+        parentPhone: parentPhoneLookup[invoice.student_id] ?? 'Not set',
         admissionNumber: students.find((student) => student.id === invoice.student_id)?.admission_number ?? 'Not set',
         feeStructureName: invoice.fee_structure_id ? feeStructureLookup[invoice.fee_structure_id]?.name : undefined,
         totalFee: invoice.fee_structure_id ? feeStructureLookup[invoice.fee_structure_id]?.total_amount : invoice.amount_due,

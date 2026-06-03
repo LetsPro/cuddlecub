@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, CalendarDays, CreditCard, HeartPulse } from 'lucide-react';
+import { Bell, CalendarDays, CreditCard, Download, HeartPulse } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -7,9 +7,11 @@ import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ThemedLoader } from '../../components/ThemedLoader';
 import { useAppContext } from '../../lib/app-context';
+import { openBrandedInvoicePdf } from '../../lib/invoices';
+import { buildStudentNameMap } from '../../lib/portal-data';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
-import { formatCurrency, formatDateTime } from '../../lib/utils';
+import { formatCurrency, formatDate, formatDateTime } from '../../lib/utils';
 import type { ContentPost, EventRecord, FeeInvoice, NotificationRecord } from '../../types/app';
 
 interface AttendanceRow {
@@ -35,6 +37,7 @@ export function ParentDashboardPage() {
 
   const today = new Date().toISOString().slice(0, 10);
   const studentIds = useMemo(() => students.map((student) => student.id), [students]);
+  const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
 
   useEffect(() => {
     if (!parentRecord || !students.length) return;
@@ -99,6 +102,22 @@ export function ParentDashboardPage() {
     .filter((invoice) => invoice.status !== 'paid')
     .reduce((sum, invoice) => sum + ((invoice.amount_due ?? 0) - (invoice.amount_paid ?? 0)), 0);
 
+  function downloadInvoice(invoice: FeeInvoice) {
+    if (!parentRecord) return;
+
+    try {
+      void openBrandedInvoicePdf({
+        school,
+        invoice,
+        studentName: studentNameMap[invoice.student_id] ?? 'Child',
+        parentName: parentRecord.full_name,
+        parentPhone: parentRecord.whatsapp_number || parentRecord.phone_number || 'Not set',
+      });
+    } catch (error) {
+      setLoadMessage(getErrorMessage(error));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -124,6 +143,33 @@ export function ParentDashboardPage() {
         <StatCard icon={CreditCard} label="Pending fees" tone="amber" value={formatCurrency(pendingAmount)} meta="Outstanding amount" />
         <StatCard icon={CalendarDays} label="Upcoming events" tone="slate" value={events.length} meta="Next school dates" />
       </div>
+
+      <SectionCard title="Fee invoices" description="Recent invoices are available here for quick download.">
+        <div className="space-y-3">
+          {invoices.length === 0 ? (
+            <p className="text-sm text-slate-500">No invoices available.</p>
+          ) : (
+            invoices.slice(0, 5).map((invoice) => (
+              <div key={invoice.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-bold text-slate-900">{invoice.invoice_number}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {studentNameMap[invoice.student_id] ?? 'Child'} · Due {formatDate(invoice.due_date)}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <StatusBadge value={invoice.status} />
+                    <span className="text-sm font-bold text-slate-700">{formatCurrency(invoice.amount_due - (invoice.amount_paid ?? 0))}</span>
+                  </div>
+                </div>
+                <button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => downloadInvoice(invoice)} type="button">
+                  <Download className="h-3.5 w-3.5" />
+                  Download PDF
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </SectionCard>
 
       <SectionCard title="Child profile summary" description="Quick summary cards for linked children.">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

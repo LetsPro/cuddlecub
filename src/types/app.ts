@@ -347,6 +347,7 @@ export interface NotificationRecord {
   status: string;
   scheduled_at: string | null;
   sent_at: string | null;
+  attachment_url: string | null;
 }
 
 export interface StaffRequest {

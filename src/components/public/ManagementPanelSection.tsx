@@ -23,7 +23,7 @@ const managementMembers = [
     name: 'Mr Ghanavanth',
     image: '/management/mr-ghanavanth.jpg',
     role: 'Business Development Officer',
-    description: 'Business development officer of Cuddle Cub International Preschool, Tech Engineer.',
+    description: 'Business development officer of Cuddle Cub International Preschool, Software Engineer.',
   },
 ];
 

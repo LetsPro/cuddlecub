@@ -204,7 +204,13 @@ export function StaffPage() {
 
     try {
       const temporaryPassword = generateTemporaryPassword();
-      const user = await createManagedUserAccount(member.email, temporaryPassword);
+      const user = await createManagedUserAccount(member.email, temporaryPassword, {
+        schoolId: school.id,
+        fullName: member.full_name,
+        phone: member.phone_number ?? null,
+        role: 'teacher',
+        isActive: member.is_active,
+      });
       const accessInvitedAt = new Date().toISOString();
 
       const { error } = await supabase

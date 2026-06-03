@@ -207,15 +207,6 @@ export function ParentsPage() {
       }
 
       if (currentParent?.user_id) {
-        await syncManagedProfile({
-          userId: currentParent.user_id,
-          schoolId: school.id,
-          fullName: payload.full_name,
-          phone: payload.phone_number,
-          role: 'parent',
-          isActive: payload.is_active,
-        });
-
         if (form.password) {
           try {
             await updateManagedUserPassword(currentParent.user_id, form.password);
@@ -243,6 +234,15 @@ export function ParentsPage() {
             return nextCredentials;
           });
         }
+
+        await syncManagedProfile({
+          userId: currentParent.user_id,
+          schoolId: school.id,
+          fullName: payload.full_name,
+          phone: payload.phone_number,
+          role: 'parent',
+          isActive: payload.is_active,
+        });
       }
 
       await loadParents();
@@ -279,7 +279,13 @@ export function ParentsPage() {
     try {
       const email = parent.email;
       const temporaryPassword = generateTemporaryPassword();
-      const user = await createManagedUserAccount(email, temporaryPassword);
+      const user = await createManagedUserAccount(email, temporaryPassword, {
+        schoolId: school.id,
+        fullName: parent.full_name,
+        phone: parent.phone_number,
+        role: 'parent',
+        isActive: parent.is_active,
+      });
       const accessInvitedAt = new Date().toISOString();
 
       const parentLoginUpdate = {

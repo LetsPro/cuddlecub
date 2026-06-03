@@ -1,0 +1,5 @@
+[functions.create-managed-user-account]
+verify_jwt = false
+
+[functions.update-managed-user-password]
+verify_jwt = false

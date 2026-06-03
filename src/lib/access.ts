@@ -1,9 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { AppRole } from '../types/app';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export type PortalAccessStatus = 'not_created' | 'invited' | 'active' | 'disabled';
 
@@ -25,15 +22,7 @@ interface ManagedProfileParams {
   isActive: boolean;
 }
 
-function createEphemeralAuthClient() {
-  return createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-}
+type ManagedProfileInput = Omit<ManagedProfileParams, 'userId'>;
 
 export function deriveEnabledPortalAccessStatus(record: Omit<PortalAccessRecord, 'is_active'>): Exclude<PortalAccessStatus, 'disabled'> {
   if (record.access_status === 'active' || record.last_login_at) {
@@ -62,34 +51,26 @@ export function generateTemporaryPassword(length = 14) {
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
-export async function createManagedUserAccount(email: string, password: string) {
+export async function createManagedUserAccount(email: string, password: string, profile?: ManagedProfileInput) {
   const normalizedEmail = email.trim().toLowerCase();
 
   if (!normalizedEmail) {
     throw new Error('Email is required to create login credentials.');
   }
 
-  const ephemeralClient = createEphemeralAuthClient();
-  const { data, error } = await ephemeralClient.auth.signUp({
-    email: normalizedEmail,
-    password,
-    options: {
-      emailRedirectTo: window.location.origin,
-      data: {
-        source: 'school_admin_created',
-      },
+  const { data: managedData, error: managedError } = await supabase.functions.invoke<{ user?: User }>('create-managed-user-account', {
+    body: {
+      email: normalizedEmail,
+      password,
+      profile,
     },
   });
 
-  if (error) {
-    throw error;
+  if (!managedError && managedData?.user) {
+    return managedData.user;
   }
 
-  if (!data.user) {
-    throw new Error('Supabase did not return the new user account.');
-  }
-
-  return data.user;
+  throw new Error(managedError?.message ?? 'Managed account function is not available. Deploy the Supabase function before creating portal credentials.');
 }
 
 export async function sendManagedPasswordReset(email: string) {

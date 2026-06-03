@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-api-version',
 };
 
 Deno.serve(async (request) => {
@@ -55,19 +55,23 @@ Deno.serve(async (request) => {
 
     const { data: parentRecord, error: parentError } = await supabase
       .from('parents')
-      .select('id')
+      .select('id, full_name, phone_number, is_active')
       .eq('user_id', userId)
       .eq('school_id', callerProfile.school_id)
-      .single();
+      .maybeSingle();
 
     const { data: staffRecord, error: staffError } = await supabase
       .from('staff')
-      .select('id')
+      .select('id, full_name, phone_number, role, is_active')
       .eq('user_id', userId)
       .eq('school_id', callerProfile.school_id)
-      .single();
+      .maybeSingle();
 
-    if ((!parentRecord && !staffRecord) || (parentError && staffError)) {
+    if (parentError || staffError) {
+      throw parentError ?? staffError;
+    }
+
+    if (!parentRecord && !staffRecord) {
       throw new Error('Managed account not found for this school.');
     }
 
@@ -77,6 +81,24 @@ Deno.serve(async (request) => {
 
     if (updateError) {
       throw updateError;
+    }
+
+    const profileSource = parentRecord ?? staffRecord;
+    const role = parentRecord ? 'parent' : staffRecord?.role === 'teacher' ? 'teacher' : 'staff';
+    const { error: profileError } = await supabase.from('profiles').upsert(
+      {
+        user_id: userId,
+        school_id: callerProfile.school_id,
+        full_name: profileSource.full_name,
+        phone: profileSource.phone_number,
+        role,
+        is_active: profileSource.is_active,
+      },
+      { onConflict: 'user_id' },
+    );
+
+    if (profileError) {
+      throw profileError;
     }
 
     return new Response(JSON.stringify({ ok: true }), {

@@ -418,34 +418,73 @@ export function AdmissionsPage() {
 
     const { firstName, lastName } = splitFullName(normalizedStudentName);
     const admissionNumber = await createNextAdmissionNumber();
-    const temporaryPassword = generateTemporaryPassword();
-    const user = await createManagedUserAccount(normalizedEmail, temporaryPassword);
     const accessInvitedAt = new Date().toISOString();
-
-    const { data: parent, error: parentError } = await supabase
+    const { data: existingParents, error: existingParentError } = await supabase
       .from('parents')
-      .insert({
-        school_id: school.id,
-        full_name: normalizedParentName,
-        phone_number: normalizedPhoneNumber,
-        whatsapp_number: normalizedPhoneNumber,
-        email: normalizedEmail,
-        address: null,
-        emergency_contact_name: normalizedParentName,
-        emergency_contact_phone: normalizedPhoneNumber,
-        notification_preferences: { channel: 'dashboard' },
-        is_active: true,
-        user_id: user.id,
-        access_status: 'invited',
-        access_invited_at: accessInvitedAt,
-      })
-      .select('id')
-      .single();
+      .select('id, user_id, portal_password')
+      .eq('school_id', school.id)
+      .ilike('email', normalizedEmail)
+      .limit(1);
 
-    if (parentError) throw parentError;
+    if (existingParentError) throw existingParentError;
+
+    const existingParent = (existingParents ?? [])[0] as { id: string; user_id: string | null; portal_password?: string | null } | undefined;
+    const temporaryPassword = existingParent?.portal_password ?? generateTemporaryPassword();
+    let userId = existingParent?.user_id ?? null;
+
+    if (!userId) {
+      const user = await createManagedUserAccount(normalizedEmail, temporaryPassword, {
+        schoolId: school.id,
+        fullName: normalizedParentName,
+        phone: normalizedPhoneNumber,
+        role: 'parent',
+        isActive: true,
+      });
+      userId = user.id;
+    }
+
+    const parentPayload = {
+      school_id: school.id,
+      full_name: normalizedParentName,
+      phone_number: normalizedPhoneNumber,
+      whatsapp_number: normalizedPhoneNumber,
+      email: normalizedEmail,
+      address: null,
+      emergency_contact_name: normalizedParentName,
+      emergency_contact_phone: normalizedPhoneNumber,
+      notification_preferences: { channel: 'dashboard' },
+      is_active: true,
+      user_id: userId,
+      access_status: 'invited',
+      access_invited_at: existingParent?.user_id ? undefined : accessInvitedAt,
+      portal_password: temporaryPassword,
+    };
+
+    let parentId = existingParent?.id ?? null;
+
+    if (existingParent) {
+      const { error: parentUpdateError } = await supabase.from('parents').update(parentPayload).eq('id', existingParent.id);
+      if (parentUpdateError) throw parentUpdateError;
+    } else {
+      const { data: parent, error: parentError } = await supabase
+        .from('parents')
+        .insert({
+          ...parentPayload,
+          access_invited_at: accessInvitedAt,
+        })
+        .select('id')
+        .single();
+
+      if (parentError) throw parentError;
+      parentId = parent.id as string;
+    }
+
+    if (!parentId || !userId) {
+      throw new Error('Parent login could not be prepared for admission conversion.');
+    }
 
     await syncManagedProfile({
-      userId: user.id,
+      userId,
       schoolId: school.id,
       fullName: normalizedParentName,
       phone: normalizedPhoneNumber,
@@ -453,33 +492,65 @@ export function AdmissionsPage() {
       isActive: true,
     });
 
-    const { data: student, error: studentError } = await supabase
+    const { data: existingStudents, error: existingStudentError } = await supabase
       .from('students')
-      .insert({
-        school_id: school.id,
-        first_name: firstName,
-        last_name: lastName,
-        admission_number: admissionNumber,
-        dob: dob || createPlaceholderDate(),
-        gender,
-        class_id: null,
-        section_id: null,
-        medical_notes: notes || null,
-        allergy_details: null,
-        emergency_contact_name: normalizedParentName,
-        emergency_contact_phone: normalizedPhoneNumber,
-        photo_url: null,
-        is_active: true,
-      })
-      .select('id')
-      .single();
+      .select('id, admission_number')
+      .eq('school_id', school.id)
+      .ilike('first_name', firstName)
+      .ilike('last_name', lastName)
+      .eq('dob', dob || createPlaceholderDate())
+      .limit(1);
 
-    if (studentError) throw studentError;
+    if (existingStudentError) throw existingStudentError;
 
-    const { error: linkError } = await supabase.from('student_parents').insert({
+    const existingStudent = (existingStudents ?? [])[0] as { id: string; admission_number: string } | undefined;
+    let studentId = existingStudent?.id ?? null;
+    let finalAdmissionNumber = existingStudent?.admission_number ?? admissionNumber;
+
+    if (!existingStudent) {
+      const { data: student, error: studentError } = await supabase
+        .from('students')
+        .insert({
+          school_id: school.id,
+          first_name: firstName,
+          last_name: lastName,
+          admission_number: admissionNumber,
+          dob: dob || createPlaceholderDate(),
+          gender,
+          class_id: null,
+          section_id: null,
+          medical_notes: notes || null,
+          allergy_details: null,
+          emergency_contact_name: normalizedParentName,
+          emergency_contact_phone: normalizedPhoneNumber,
+          photo_url: null,
+          is_active: true,
+        })
+        .select('id, admission_number')
+        .single();
+
+      if (studentError) throw studentError;
+      studentId = student.id as string;
+      finalAdmissionNumber = student.admission_number as string;
+    }
+
+    if (!studentId) {
+      throw new Error('Student profile could not be created for admission conversion.');
+    }
+
+    const { error: clearPrimaryError } = await supabase
+      .from('student_parents')
+      .update({ is_primary: false })
+      .eq('school_id', school.id)
+      .eq('student_id', studentId)
+      .eq('is_primary', true);
+
+    if (clearPrimaryError) throw clearPrimaryError;
+
+    const { error: linkError } = await supabase.from('student_parents').upsert({
       school_id: school.id,
-      student_id: student.id,
-      parent_id: parent.id,
+      student_id: studentId,
+      parent_id: parentId,
       relationship: 'guardian',
       is_primary: true,
     });
@@ -489,7 +560,7 @@ export function AdmissionsPage() {
     const admissionPayload = {
       school_id: school.id,
       inquiry_id: inquiryId || null,
-      student_id: student.id,
+      student_id: studentId,
       status,
       submitted_at: submittedAt || createPlaceholderDate(),
       confirmed_at: confirmedAt || (status === 'enrolled' ? createPlaceholderDate() : null),
@@ -511,7 +582,7 @@ export function AdmissionsPage() {
       if (inquiryError) throw inquiryError;
     }
 
-    return { admissionNumber, temporaryPassword, email: normalizedEmail, parentName: normalizedParentName };
+    return { admissionNumber: finalAdmissionNumber, temporaryPassword, email: normalizedEmail, parentName: normalizedParentName };
   }
 
   async function handleAdmissionSubmit(event: React.FormEvent<HTMLFormElement>) {

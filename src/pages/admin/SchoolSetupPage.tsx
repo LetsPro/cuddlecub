@@ -28,6 +28,56 @@ interface SetupMetricCardProps {
 
 type SetupModalType = 'academicYear' | 'class' | 'fee' | 'holiday';
 
+const fixedGovernmentHolidays = [
+  { month: 0, day: 1, title: 'New Year Holiday' },
+  { month: 0, day: 14, title: 'Makara Sankranti' },
+  { month: 0, day: 26, title: 'Republic Day' },
+  { month: 3, day: 14, title: 'Dr. B. R. Ambedkar Jayanti' },
+  { month: 4, day: 1, title: 'May Day' },
+  { month: 7, day: 15, title: 'Independence Day' },
+  { month: 9, day: 2, title: 'Gandhi Jayanti' },
+  { month: 10, day: 1, title: 'Kannada Rajyotsava' },
+  { month: 11, day: 25, title: 'Christmas' },
+];
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function buildGeneralHolidayCalendar(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const rows: Array<{ title: string; holiday_date: string; holiday_type: string }> = [];
+
+  for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+    if (date.getDay() === 6) {
+      rows.push({
+        title: 'Saturday Holiday',
+        holiday_date: toDateInputValue(date),
+        holiday_type: 'weekly_holiday',
+      });
+    }
+  }
+
+  for (let year = start.getFullYear(); year <= end.getFullYear(); year += 1) {
+    fixedGovernmentHolidays.forEach((holiday) => {
+      const holidayDate = new Date(year, holiday.month, holiday.day);
+      if (holidayDate >= start && holidayDate <= end) {
+        rows.push({
+          title: holiday.title,
+          holiday_date: toDateInputValue(holidayDate),
+          holiday_type: 'government_holiday',
+        });
+      }
+    });
+  }
+
+  return rows.sort((left, right) => left.holiday_date.localeCompare(right.holiday_date));
+}
+
 function SetupMetricCard({ icon: Icon, label, value, detail }: SetupMetricCardProps) {
   return (
     <div className="card-panel p-5">
@@ -401,6 +451,38 @@ export function SchoolSetupPage() {
     }
   }
 
+  async function handleSeedGeneralCalendar() {
+    setMessage(null);
+
+    if (!activeAcademicYear) {
+      setMessage('Set an active academic year before adding the general holiday calendar.');
+      return;
+    }
+
+    const existingDates = new Set(holidays.map((holiday) => holiday.holiday_date));
+    const rows = buildGeneralHolidayCalendar(activeAcademicYear.start_date, activeAcademicYear.end_date)
+      .filter((holiday) => !existingDates.has(holiday.holiday_date))
+      .map((holiday) => ({
+        ...holiday,
+        school_id: school.id,
+      }));
+
+    if (rows.length === 0) {
+      setMessage('General holiday calendar is already added for the active academic year.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('school_holidays').insert(rows);
+      if (error) throw error;
+
+      await loadSetup();
+      setMessage(`${rows.length} general holiday dates added, including Saturdays and fixed government holidays.`);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  }
+
   async function handleDeleteAcademicYear(academicYear: AcademicYear) {
     const confirmed = window.confirm(`Delete academic year ${academicYear.label}?`);
 
@@ -552,6 +634,10 @@ export function SchoolSetupPage() {
           action={
             <div className="flex flex-wrap justify-end gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{holidays.length} dates</span>
+              <button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => void handleSeedGeneralCalendar()} type="button">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Add general calendar
+              </button>
               <button className="button-primary gap-2 px-3 py-2 text-xs" onClick={openCreateHoliday} type="button">
                 <Plus className="h-3.5 w-3.5" />
                 Add holiday
