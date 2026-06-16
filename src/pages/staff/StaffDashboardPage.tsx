@@ -7,6 +7,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
+import { fetchAssignedClassIdsForStaff } from '../../lib/portal-data';
 import { useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { daysUntil, formatDate, formatDateTime } from '../../lib/utils';
@@ -42,6 +43,9 @@ export function StaffDashboardPage() {
 
     try {
       const studentIdList = studentIds;
+      const assignedClassIds = await fetchAssignedClassIdsForStaff(staffRecord, school.id);
+      const timetableQuery = supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time').limit(6);
+      const assignedTimetableQuery = assignedClassIds.length ? timetableQuery.in('class_id', assignedClassIds) : timetableQuery;
       const [
         studentAttendanceResponse,
         activityResponse,
@@ -56,9 +60,7 @@ export function StaffDashboardPage() {
           ? supabase.from('daily_activity_logs').select('student_id').in('student_id', studentIdList).eq('activity_date', today)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(5),
-        staffRecord.class_teacher_for
-          ? supabase.from('timetable_entries').select('*').eq('school_id', school.id).eq('class_id', staffRecord.class_teacher_for).order('weekday').order('start_time').limit(6)
-          : supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time').limit(6),
+        assignedTimetableQuery,
         studentIdList.length ? supabase.from('students').select('id, first_name, last_name, dob').in('id', studentIdList) : Promise.resolve({ data: [], error: null }),
       ]);
 

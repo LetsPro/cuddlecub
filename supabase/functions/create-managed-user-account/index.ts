@@ -29,6 +29,129 @@ async function findUserByEmail(supabase: ReturnType<typeof createClient>, email:
   return null;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+async function sendWelcomeEmail({
+  email,
+  password,
+  fullName,
+  schoolName,
+  loginUrl,
+  role,
+}: {
+  email: string;
+  password: string;
+  fullName: string | null;
+  schoolName: string | null;
+  loginUrl: string | null;
+  role: string;
+}) {
+  const emailjsServiceId = Deno.env.get('EMAILJS_SERVICE_ID');
+  const emailjsTemplateId = Deno.env.get('EMAILJS_TEMPLATE_ID');
+  const emailjsPublicKey = Deno.env.get('EMAILJS_PUBLIC_KEY');
+  const emailjsPrivateKey = Deno.env.get('EMAILJS_PRIVATE_KEY');
+  const senderEmail = Deno.env.get('EMAIL_FROM') ?? 'cuddlecubpreschool@gmail.com';
+  const senderName = Deno.env.get('EMAIL_FROM_NAME') ?? 'Cuddle Cub Preschool';
+  const appLoginUrl = Deno.env.get('APP_LOGIN_URL') ?? loginUrl ?? '';
+
+  if (!emailjsServiceId || !emailjsTemplateId || !emailjsPublicKey) {
+    return {
+      sent: false,
+      reason: 'EmailJS delivery is not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID and EMAILJS_PUBLIC_KEY.',
+    };
+  }
+
+  if (!appLoginUrl) {
+    return {
+      sent: false,
+      reason: 'Login URL is not configured for welcome email delivery.',
+    };
+  }
+
+  try {
+    const greetingName = fullName?.trim() || 'Parent';
+    const displaySchoolName = schoolName?.trim() || 'Cuddle Cub Preschool';
+    const portalLabel = role === 'teacher' || role === 'staff' ? 'teacher portal' : 'parent portal';
+    const accountLabel = role === 'teacher' || role === 'staff' ? 'teacher' : 'parent';
+    const subject = `Welcome to ${displaySchoolName} ${portalLabel}`;
+    const text = [
+      `Dear ${greetingName},`,
+      '',
+      `Welcome to ${displaySchoolName}. Your ${accountLabel} portal account has been created.`,
+      '',
+      `Login link: ${appLoginUrl}`,
+      `Email: ${email}`,
+      `Temporary password: ${password}`,
+      '',
+      'Please sign in and keep these credentials secure.',
+      '',
+      'Regards,',
+      displaySchoolName,
+    ].join('\n');
+    const html = `
+      <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.6">
+        <p>Dear ${escapeHtml(greetingName)},</p>
+        <p>Welcome to ${escapeHtml(displaySchoolName)}. Your ${escapeHtml(accountLabel)} portal account has been created.</p>
+        <p>
+          <strong>Login link:</strong> <a href="${escapeHtml(appLoginUrl)}">${escapeHtml(appLoginUrl)}</a><br>
+          <strong>Email:</strong> ${escapeHtml(email)}<br>
+          <strong>Temporary password:</strong> ${escapeHtml(password)}
+        </p>
+        <p>Please sign in and keep these credentials secure.</p>
+        <p>Regards,<br>${escapeHtml(displaySchoolName)}</p>
+      </div>
+    `;
+
+    const sendResponse = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        service_id: emailjsServiceId,
+        template_id: emailjsTemplateId,
+        user_id: emailjsPublicKey,
+        accessToken: emailjsPrivateKey || undefined,
+        template_params: {
+          to_email: email,
+          to_name: greetingName,
+          parent_name: greetingName,
+          school_name: displaySchoolName,
+          login_url: appLoginUrl,
+          login_email: email,
+          temporary_password: password,
+          portal_label: portalLabel,
+          account_label: accountLabel,
+          from_name: senderName,
+          from_email: senderEmail,
+          subject,
+          message: text,
+          html_message: html,
+        },
+      }),
+    });
+
+    if (!sendResponse.ok) {
+      const responseText = await sendResponse.text();
+      throw new Error(`EmailJS send request failed with status ${sendResponse.status}${responseText ? `: ${responseText}` : '.'}`);
+    }
+
+    return { sent: true };
+  } catch (error) {
+    return {
+      sent: false,
+      reason: error instanceof Error ? error.message : 'Welcome email delivery failed.',
+    };
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -43,13 +166,17 @@ Deno.serve(async (request) => {
       throw new Error('Missing Supabase admin configuration.');
     }
 
-    const { email, password, profile } = await request.json();
+    const { email, password, profile, welcomeEmail } = await request.json();
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const requestedProfile = profile && typeof profile === 'object' ? profile : null;
+    const requestedWelcomeEmail = welcomeEmail && typeof welcomeEmail === 'object' ? welcomeEmail : null;
     const profileRole = requestedProfile?.role === 'teacher' || requestedProfile?.role === 'staff' ? requestedProfile.role : 'parent';
     const profileFullName = typeof requestedProfile?.fullName === 'string' ? requestedProfile.fullName : null;
     const profilePhone = typeof requestedProfile?.phone === 'string' ? requestedProfile.phone : null;
     const profileIsActive = typeof requestedProfile?.isActive === 'boolean' ? requestedProfile.isActive : true;
+    const shouldSendWelcomeEmail = requestedWelcomeEmail?.sendWelcomeEmail === true;
+    const welcomeLoginUrl = typeof requestedWelcomeEmail?.loginUrl === 'string' ? requestedWelcomeEmail.loginUrl : null;
+    const welcomeSchoolName = typeof requestedWelcomeEmail?.schoolName === 'string' ? requestedWelcomeEmail.schoolName : null;
 
     if (!normalizedEmail) {
       throw new Error('Email is required.');
@@ -155,7 +282,18 @@ Deno.serve(async (request) => {
       throw profileError;
     }
 
-    return new Response(JSON.stringify({ user: managedUser }), {
+    const emailDelivery = shouldSendWelcomeEmail
+      ? await sendWelcomeEmail({
+          email: normalizedEmail,
+          password,
+          fullName: profileFullName,
+          schoolName: welcomeSchoolName,
+          loginUrl: welcomeLoginUrl,
+          role: profileRole,
+        })
+      : undefined;
+
+    return new Response(JSON.stringify({ user: managedUser, welcomeEmail: emailDelivery }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });

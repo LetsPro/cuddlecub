@@ -94,6 +94,12 @@ interface GeneratedAdmissionCredential {
   parentName: string;
   email: string;
   temporaryPassword: string;
+  welcomeEmailSent?: boolean;
+  welcomeEmailReason?: string;
+}
+
+function getParentLoginUrl() {
+  return `${window.location.origin}/login`;
 }
 
 export function AdmissionsPage() {
@@ -432,15 +438,29 @@ export function AdmissionsPage() {
     const temporaryPassword = existingParent?.portal_password ?? generateTemporaryPassword();
     let userId = existingParent?.user_id ?? null;
 
+    let welcomeEmailSent = false;
+    let welcomeEmailReason: string | undefined;
+
     if (!userId) {
-      const user = await createManagedUserAccount(normalizedEmail, temporaryPassword, {
-        schoolId: school.id,
-        fullName: normalizedParentName,
-        phone: normalizedPhoneNumber,
-        role: 'parent',
-        isActive: true,
-      });
+      const { user, welcomeEmail } = await createManagedUserAccount(
+        normalizedEmail,
+        temporaryPassword,
+        {
+          schoolId: school.id,
+          fullName: normalizedParentName,
+          phone: normalizedPhoneNumber,
+          role: 'parent',
+          isActive: true,
+        },
+        {
+          sendWelcomeEmail: true,
+          loginUrl: getParentLoginUrl(),
+          schoolName: school.name,
+        },
+      );
       userId = user.id;
+      welcomeEmailSent = Boolean(welcomeEmail?.sent);
+      welcomeEmailReason = welcomeEmail?.reason;
     }
 
     const parentPayload = {
@@ -582,7 +602,7 @@ export function AdmissionsPage() {
       if (inquiryError) throw inquiryError;
     }
 
-    return { admissionNumber: finalAdmissionNumber, temporaryPassword, email: normalizedEmail, parentName: normalizedParentName };
+    return { admissionNumber: finalAdmissionNumber, temporaryPassword, email: normalizedEmail, parentName: normalizedParentName, welcomeEmailSent, welcomeEmailReason };
   }
 
   async function handleAdmissionSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -624,6 +644,8 @@ export function AdmissionsPage() {
           parentName: result.parentName,
           email: result.email,
           temporaryPassword: result.temporaryPassword,
+          welcomeEmailSent: result.welcomeEmailSent,
+          welcomeEmailReason: result.welcomeEmailReason,
         });
       }
 
@@ -720,6 +742,8 @@ export function AdmissionsPage() {
         parentName: result.parentName,
         email: result.email,
         temporaryPassword: result.temporaryPassword,
+        welcomeEmailSent: result.welcomeEmailSent,
+        welcomeEmailReason: result.welcomeEmailReason,
       });
 
       await loadAdmissions();
@@ -800,7 +824,11 @@ export function AdmissionsPage() {
             {generatedAdmissionCredential.parentName} · {generatedAdmissionCredential.email}
           </p>
           <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 font-mono text-sm text-slate-900">{generatedAdmissionCredential.temporaryPassword}</div>
-          <p className="mt-3 text-sm text-slate-500">Share this once with the parent. Password changes are managed from the Parents page.</p>
+          <p className="mt-3 text-sm text-slate-500">
+            {generatedAdmissionCredential.welcomeEmailSent
+              ? 'Welcome email sent with login credentials. Password changes are managed from the Parents page.'
+              : `Share this once with the parent. Welcome email was not sent${generatedAdmissionCredential.welcomeEmailReason ? `: ${generatedAdmissionCredential.welcomeEmailReason}` : '.'}`}
+          </p>
         </div>
       ) : null}
 

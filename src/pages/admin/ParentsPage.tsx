@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { KeyRound, PencilLine, Plus, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
+import { KeyRound, Mail, PencilLine, Plus, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
 import { PageHeader } from '../../components/PageHeader';
@@ -61,6 +61,10 @@ function storeCredentials(schoolId: string, credentials: Record<string, Generate
   } catch {
     // The password is still visible for this session even if browser storage is unavailable.
   }
+}
+
+function getParentLoginUrl() {
+  return `${window.location.origin}/login`;
 }
 
 export function ParentsPage() {
@@ -279,13 +283,22 @@ export function ParentsPage() {
     try {
       const email = parent.email;
       const temporaryPassword = generateTemporaryPassword();
-      const user = await createManagedUserAccount(email, temporaryPassword, {
-        schoolId: school.id,
-        fullName: parent.full_name,
-        phone: parent.phone_number,
-        role: 'parent',
-        isActive: parent.is_active,
-      });
+      const { user, welcomeEmail } = await createManagedUserAccount(
+        email,
+        temporaryPassword,
+        {
+          schoolId: school.id,
+          fullName: parent.full_name,
+          phone: parent.phone_number,
+          role: 'parent',
+          isActive: parent.is_active,
+        },
+        {
+          sendWelcomeEmail: true,
+          loginUrl: getParentLoginUrl(),
+          schoolName: school.name,
+        },
+      );
       const accessInvitedAt = new Date().toISOString();
 
       const parentLoginUpdate = {
@@ -338,7 +351,75 @@ export function ParentsPage() {
         storeCredentials(school.id, nextCredentials);
         return nextCredentials;
       });
-      setMessage('Parent login created. Share the temporary password with the parent.');
+      setMessage(
+        welcomeEmail?.sent
+          ? 'Parent login created and welcome email sent with credentials.'
+          : `Parent login created, but email was not sent${welcomeEmail?.reason ? `: ${welcomeEmail.reason}` : '.'}`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setBusyAccessId(null);
+    }
+  }
+
+  async function handleSendWelcomeEmail(parent: ParentRecord) {
+    if (!parent.email) {
+      setMessage('Add an email address before sending parent credentials.');
+      return;
+    }
+
+    const credential =
+      generatedCredential?.parentId === parent.id
+        ? generatedCredential
+        : parent.portal_password
+          ? {
+              parentId: parent.id,
+              fullName: parent.full_name,
+              email: parent.email,
+              temporaryPassword: parent.portal_password,
+            }
+          : generatedCredentials[parent.id] ?? null;
+
+    if (!credential?.temporaryPassword) {
+      setMessage('No saved password is available. Edit the parent and set a password first.');
+      return;
+    }
+
+    setBusyAccessId(parent.id);
+    setMessage(null);
+
+    try {
+      const { user, welcomeEmail } = await createManagedUserAccount(
+        parent.email,
+        credential.temporaryPassword,
+        {
+          schoolId: school.id,
+          fullName: parent.full_name,
+          phone: parent.phone_number,
+          role: 'parent',
+          isActive: parent.is_active,
+        },
+        {
+          sendWelcomeEmail: true,
+          loginUrl: getParentLoginUrl(),
+          schoolName: school.name,
+        },
+      );
+
+      if (parent.user_id !== user.id) {
+        const { error } = await supabase.from('parents').update({ user_id: user.id }).eq('id', parent.id);
+        if (error) throw error;
+      }
+
+      const nextParents = await loadParents();
+      syncOpenAccessModal(nextParents, parent.id);
+      setGeneratedCredential(credential);
+      setMessage(
+        welcomeEmail?.sent
+          ? 'Welcome email sent with parent login credentials.'
+          : `Welcome email was not sent${welcomeEmail?.reason ? `: ${welcomeEmail.reason}` : '.'}`,
+      );
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -416,7 +497,18 @@ export function ParentsPage() {
 
   const editingParent = editingParentId ? parents.find((parent) => parent.id === editingParentId) ?? null : null;
   const accessParentStatus = accessParent ? derivePortalAccessStatus(accessParent) : null;
-  const accessParentCredential = accessParent && generatedCredential?.parentId === accessParent.id ? generatedCredential : null;
+  const accessParentCredential = accessParent
+    ? generatedCredential?.parentId === accessParent.id
+      ? generatedCredential
+      : accessParent.portal_password
+        ? {
+            parentId: accessParent.id,
+            fullName: accessParent.full_name,
+            email: accessParent.email ?? '',
+            temporaryPassword: accessParent.portal_password,
+          }
+        : generatedCredentials[accessParent.id] ?? null
+    : null;
   const summary = useMemo(
     () => ({
       total: parents.length,
@@ -740,6 +832,18 @@ export function ParentsPage() {
                 >
                   <KeyRound className="h-4 w-4" />
                   {busyAccessId === accessParent.id ? 'Creating login...' : 'Create login'}
+                </button>
+              ) : null}
+
+              {deriveEnabledPortalAccessStatus(accessParent) !== 'not_created' && accessParentCredential ? (
+                <button
+                  className="button-secondary gap-2"
+                  disabled={busyAccessId === accessParent.id || !accessParent.email}
+                  onClick={() => void handleSendWelcomeEmail(accessParent)}
+                  type="button"
+                >
+                  <Mail className="h-4 w-4" />
+                  {busyAccessId === accessParent.id ? 'Sending email...' : 'Send welcome email'}
                 </button>
               ) : null}
 

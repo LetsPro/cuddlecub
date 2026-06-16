@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { KeyRound, PencilLine, Plus, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
+import { KeyRound, Mail, PencilLine, Plus, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
 import { Modal } from '../../components/Modal';
@@ -21,13 +21,23 @@ import { ToastMessage } from '../../lib/toast';
 import { formatDateTime, getInitials } from '../../lib/utils';
 import type { SchoolClass, StaffRecord } from '../../types/app';
 
-const emptyForm = {
+interface StaffForm {
+  full_name: string;
+  email: string;
+  phone_number: string;
+  designation: string;
+  photo_url: string;
+  class_teacher_for: string[];
+  is_active: boolean;
+}
+
+const emptyForm: StaffForm = {
   full_name: '',
   email: '',
   phone_number: '',
   designation: '',
   photo_url: '',
-  class_teacher_for: '',
+  class_teacher_for: [],
   is_active: true,
 };
 
@@ -40,10 +50,35 @@ interface GeneratedCredential {
   temporaryPassword: string;
 }
 
+function getCredentialStorageKey(schoolId: string) {
+  return `cuddlecub-teacher-credentials:${schoolId}`;
+}
+
+function readStoredCredentials(schoolId: string): Record<string, GeneratedCredential> {
+  try {
+    return JSON.parse(localStorage.getItem(getCredentialStorageKey(schoolId)) ?? '{}') as Record<string, GeneratedCredential>;
+  } catch {
+    return {};
+  }
+}
+
+function storeCredentials(schoolId: string, credentials: Record<string, GeneratedCredential>) {
+  try {
+    localStorage.setItem(getCredentialStorageKey(schoolId), JSON.stringify(credentials));
+  } catch {
+    // The password is still visible for this session even if browser storage is unavailable.
+  }
+}
+
+function getStaffLoginUrl() {
+  return `${window.location.origin}/login`;
+}
+
 export function StaffPage() {
   const { school } = useAppContext();
   const [staff, setStaff] = useState<StaffRecord[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [teacherClassMap, setTeacherClassMap] = useState<Record<string, string[]>>({});
   const [form, setForm] = useState(emptyForm);
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -52,9 +87,14 @@ export function StaffPage() {
   const [busyAccessId, setBusyAccessId] = useState<string | null>(null);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [generatedCredential, setGeneratedCredential] = useState<GeneratedCredential | null>(null);
+  const [generatedCredentials, setGeneratedCredentials] = useState<Record<string, GeneratedCredential>>({});
 
   useEffect(() => {
     void loadStaff();
+  }, [school.id]);
+
+  useEffect(() => {
+    setGeneratedCredentials(readStoredCredentials(school.id));
   }, [school.id]);
 
   async function loadStaff() {
@@ -71,9 +111,17 @@ export function StaffPage() {
 
       const nextStaff = (staffResponse.data ?? []) as StaffRecord[];
       const nextClasses = (classResponse.data ?? []) as SchoolClass[];
+      const nextTeacherClassMap = nextClasses.reduce<Record<string, string[]>>((accumulator, schoolClass) => {
+        if (schoolClass.class_teacher_staff_id) {
+          accumulator[schoolClass.class_teacher_staff_id] = [...(accumulator[schoolClass.class_teacher_staff_id] ?? []), schoolClass.id];
+        }
+
+        return accumulator;
+      }, {});
 
       setStaff(nextStaff);
       setClasses(nextClasses);
+      setTeacherClassMap(nextTeacherClassMap);
 
       return nextStaff;
     } catch (error) {
@@ -97,7 +145,7 @@ export function StaffPage() {
       phone_number: member.phone_number ?? '',
       designation: member.designation,
       photo_url: member.photo_url ?? '',
-      class_teacher_for: member.class_teacher_for ?? '',
+      class_teacher_for: teacherClassMap[member.id] ?? (member.class_teacher_for ? [member.class_teacher_for] : []),
       is_active: member.is_active,
     });
     setGeneratedCredential(null);
@@ -132,6 +180,8 @@ export function StaffPage() {
 
     const isEditing = Boolean(editingStaffId);
     const currentTeacher = editingStaffId ? staff.find((member) => member.id === editingStaffId) ?? null : null;
+    const selectedClassIds = form.class_teacher_for;
+    const primaryClassId = selectedClassIds[0] ?? null;
 
     try {
       const payload = {
@@ -143,7 +193,7 @@ export function StaffPage() {
         role: 'teacher',
         photo_url: form.photo_url || null,
         permissions: teacherPermissions,
-        class_teacher_for: form.class_teacher_for || null,
+        class_teacher_for: primaryClassId,
         is_active: form.is_active,
       };
 
@@ -163,8 +213,8 @@ export function StaffPage() {
         if (clearError) throw clearError;
       }
 
-      if (form.class_teacher_for && staffId) {
-        const { error } = await supabase.from('classes').update({ class_teacher_staff_id: staffId }).eq('id', form.class_teacher_for);
+      if (selectedClassIds.length && staffId) {
+        const { error } = await supabase.from('classes').update({ class_teacher_staff_id: staffId }).in('id', selectedClassIds);
         if (error) throw error;
       }
 
@@ -203,14 +253,24 @@ export function StaffPage() {
     setMessage(null);
 
     try {
+      const email = member.email;
       const temporaryPassword = generateTemporaryPassword();
-      const user = await createManagedUserAccount(member.email, temporaryPassword, {
-        schoolId: school.id,
-        fullName: member.full_name,
-        phone: member.phone_number ?? null,
-        role: 'teacher',
-        isActive: member.is_active,
-      });
+      const { user, welcomeEmail } = await createManagedUserAccount(
+        email,
+        temporaryPassword,
+        {
+          schoolId: school.id,
+          fullName: member.full_name,
+          phone: member.phone_number ?? null,
+          role: 'teacher',
+          isActive: member.is_active,
+        },
+        {
+          sendWelcomeEmail: true,
+          loginUrl: getStaffLoginUrl(),
+          schoolName: school.name,
+        },
+      );
       const accessInvitedAt = new Date().toISOString();
 
       const { error } = await supabase
@@ -238,10 +298,84 @@ export function StaffPage() {
       setGeneratedCredential({
         teacherId: member.id,
         fullName: member.full_name,
-        email: member.email,
+        email,
         temporaryPassword,
       });
-      setMessage('Teacher login created. Share the temporary password or send a reset link.');
+      setGeneratedCredentials((current) => {
+        const nextCredentials = {
+          ...current,
+          [member.id]: {
+            teacherId: member.id,
+            fullName: member.full_name,
+            email,
+            temporaryPassword,
+          },
+        };
+        storeCredentials(school.id, nextCredentials);
+        return nextCredentials;
+      });
+      setMessage(
+        welcomeEmail?.sent
+          ? 'Teacher login created and welcome email sent with credentials.'
+          : `Teacher login created, but email was not sent${welcomeEmail?.reason ? `: ${welcomeEmail.reason}` : '.'}`,
+      );
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setBusyAccessId(null);
+    }
+  }
+
+  async function handleSendWelcomeEmail(member: StaffRecord) {
+    if (!member.email) {
+      setMessage('Add an email address before sending teacher credentials.');
+      return;
+    }
+
+    const credential =
+      generatedCredential?.teacherId === member.id
+        ? generatedCredential
+        : generatedCredentials[member.id] ?? null;
+
+    if (!credential?.temporaryPassword) {
+      setMessage('No saved temporary password is available. Create a new login or send a reset link.');
+      return;
+    }
+
+    setBusyAccessId(member.id);
+    setMessage(null);
+
+    try {
+      const { user, welcomeEmail } = await createManagedUserAccount(
+        member.email,
+        credential.temporaryPassword,
+        {
+          schoolId: school.id,
+          fullName: member.full_name,
+          phone: member.phone_number ?? null,
+          role: 'teacher',
+          isActive: member.is_active,
+        },
+        {
+          sendWelcomeEmail: true,
+          loginUrl: getStaffLoginUrl(),
+          schoolName: school.name,
+        },
+      );
+
+      if (member.user_id !== user.id) {
+        const { error } = await supabase.from('staff').update({ user_id: user.id }).eq('id', member.id);
+        if (error) throw error;
+      }
+
+      const nextStaff = await loadStaff();
+      syncOpenAccessModal(nextStaff, member.id);
+      setGeneratedCredential(credential);
+      setMessage(
+        welcomeEmail?.sent
+          ? 'Welcome email sent with teacher login credentials.'
+          : `Welcome email was not sent${welcomeEmail?.reason ? `: ${welcomeEmail.reason}` : '.'}`,
+      );
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -363,18 +497,26 @@ export function StaffPage() {
       }, {}),
     [classes],
   );
+  const getTeacherClassNames = (teacherId: string, fallbackClassId?: string | null) => {
+    const classIds = teacherClassMap[teacherId] ?? (fallbackClassId ? [fallbackClassId] : []);
+    return classIds.map((classId) => classLookup[classId]).filter(Boolean);
+  };
 
   const editingTeacher = editingStaffId ? staff.find((member) => member.id === editingStaffId) ?? null : null;
   const accessTeacherStatus = accessTeacher ? derivePortalAccessStatus(accessTeacher) : null;
-  const accessTeacherCredential = accessTeacher && generatedCredential?.teacherId === accessTeacher.id ? generatedCredential : null;
+  const accessTeacherCredential = accessTeacher
+    ? generatedCredential?.teacherId === accessTeacher.id
+      ? generatedCredential
+      : generatedCredentials[accessTeacher.id] ?? null
+    : null;
   const summary = useMemo(
     () => ({
       total: staff.length,
       active: staff.filter((member) => member.is_active).length,
       loginReady: staff.filter((member) => deriveEnabledPortalAccessStatus(member) !== 'not_created').length,
-      assigned: staff.filter((member) => Boolean(member.class_teacher_for)).length,
+      assigned: staff.filter((member) => (teacherClassMap[member.id] ?? (member.class_teacher_for ? [member.class_teacher_for] : [])).length > 0).length,
     }),
-    [staff],
+    [staff, teacherClassMap],
   );
 
   return (
@@ -425,12 +567,16 @@ export function StaffPage() {
             { key: 'designation', label: 'Designation', render: (row) => row.designation || 'Teacher' },
             {
               key: 'class',
-              label: 'Assigned class',
-              render: (row) => (
-                <span className={row.class_teacher_for ? 'font-semibold text-slate-700' : 'text-slate-500'}>
-                  {row.class_teacher_for ? classLookup[row.class_teacher_for] ?? 'Unknown class' : 'Not assigned'}
-                </span>
-              ),
+              label: 'Assigned classes',
+              render: (row) => {
+                const classNames = getTeacherClassNames(row.id, row.class_teacher_for);
+
+                return (
+                  <span className={classNames.length ? 'font-semibold text-slate-700' : 'text-slate-500'}>
+                    {classNames.length ? classNames.join(', ') : 'Not assigned'}
+                  </span>
+                );
+              },
             },
             { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.is_active ? 'active' : 'inactive'} /> },
             {
@@ -450,6 +596,22 @@ export function StaffPage() {
                   </p>
                 </div>
               ),
+            },
+            {
+              key: 'password',
+              label: 'Password',
+              render: (row) => {
+                const credential = generatedCredentials[row.id];
+
+                return credential?.temporaryPassword ? (
+                  <div>
+                    <p className="font-mono text-sm text-slate-900">{credential.temporaryPassword}</p>
+                    <p className="mt-1 text-xs text-slate-500">Managed</p>
+                  </div>
+                ) : (
+                  <span className="text-slate-500">Not available</span>
+                );
+              },
             },
             {
               key: 'action',
@@ -531,14 +693,30 @@ export function StaffPage() {
           </div>
           <div className="md:col-span-2">
             <label className="form-label">Class teacher for</label>
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, class_teacher_for: event.target.value }))} value={form.class_teacher_for}>
-              <option value="">No class assignment</option>
-              {classes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+            <div className="grid gap-2 rounded-[1.25rem] border border-slate-200 bg-white p-3 sm:grid-cols-2">
+              {classes.length ? (
+                classes.map((item) => (
+                  <label key={item.id} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                    <input
+                      checked={form.class_teacher_for.includes(item.id)}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          class_teacher_for: event.target.checked
+                            ? [...current.class_teacher_for, item.id]
+                            : current.class_teacher_for.filter((classId) => classId !== item.id),
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>{item.name}</span>
+                  </label>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">Add classes in School Setup before assigning teachers.</p>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">Select every class this teacher should manage. The first selected class is kept as the primary class for older reports.</p>
           </div>
           <label className="md:col-span-2 flex items-center gap-3 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
             <input checked={form.is_active} onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))} type="checkbox" />
@@ -586,9 +764,11 @@ export function StaffPage() {
                   <p className="mt-2 text-sm font-semibold text-slate-700">{accessTeacher.designation || 'Teacher'}</p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Assigned class</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Assigned classes</p>
                   <p className="mt-2 text-sm font-semibold text-slate-700">
-                    {accessTeacher.class_teacher_for ? classLookup[accessTeacher.class_teacher_for] ?? 'Unknown class' : 'Not assigned'}
+                    {getTeacherClassNames(accessTeacher.id, accessTeacher.class_teacher_for).length
+                      ? getTeacherClassNames(accessTeacher.id, accessTeacher.class_teacher_for).join(', ')
+                      : 'Not assigned'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white bg-white px-4 py-3">
@@ -632,15 +812,29 @@ export function StaffPage() {
                   {busyAccessId === accessTeacher.id ? 'Creating login...' : 'Create login'}
                 </button>
               ) : (
-                <button
-                  className="button-primary gap-2"
-                  disabled={busyAccessId === accessTeacher.id || !accessTeacher.email}
-                  onClick={() => void handleSendResetLink(accessTeacher)}
-                  type="button"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  {busyAccessId === accessTeacher.id ? 'Sending link...' : 'Send reset link'}
-                </button>
+                <>
+                  {accessTeacherCredential ? (
+                    <button
+                      className="button-secondary gap-2"
+                      disabled={busyAccessId === accessTeacher.id || !accessTeacher.email}
+                      onClick={() => void handleSendWelcomeEmail(accessTeacher)}
+                      type="button"
+                    >
+                      <Mail className="h-4 w-4" />
+                      {busyAccessId === accessTeacher.id ? 'Sending email...' : 'Send welcome email'}
+                    </button>
+                  ) : null}
+
+                  <button
+                    className="button-primary gap-2"
+                    disabled={busyAccessId === accessTeacher.id || !accessTeacher.email}
+                    onClick={() => void handleSendResetLink(accessTeacher)}
+                    type="button"
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    {busyAccessId === accessTeacher.id ? 'Sending link...' : 'Send reset link'}
+                  </button>
+                </>
               )}
 
               <button className="button-secondary gap-2" disabled={busyAccessId === accessTeacher.id} onClick={() => void handleToggleAccess(accessTeacher)} type="button">

@@ -91,3 +91,4 @@ Use that baseline file by itself for a fresh empty database. Do not combine it w
 - The content studio stores templates/posts metadata and scheduling state; image generation/export can be added once you share the design workflow you want.
 - Admin can now create teacher and parent logins from the Teachers and Parents pages, generate a temporary password, send a reset email, and activate or deactivate access.
 - Supabase email auth must remain enabled for the teacher and parent credential flow to work.
+- Parent login creation sends a welcome email with login credentials when the `create-managed-user-account` Edge Function has EmailJS configured: `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY`, optional `EMAILJS_PRIVATE_KEY`, `EMAIL_FROM` and `EMAIL_FROM_NAME`.

@@ -24,6 +24,20 @@ interface ManagedProfileParams {
 
 type ManagedProfileInput = Omit<ManagedProfileParams, 'userId'>;
 
+interface ManagedWelcomeEmailInput {
+  sendWelcomeEmail?: boolean;
+  loginUrl?: string;
+  schoolName?: string | null;
+}
+
+interface ManagedAccountResult {
+  user: User;
+  welcomeEmail?: {
+    sent: boolean;
+    reason?: string;
+  };
+}
+
 export function deriveEnabledPortalAccessStatus(record: Omit<PortalAccessRecord, 'is_active'>): Exclude<PortalAccessStatus, 'disabled'> {
   if (record.access_status === 'active' || record.last_login_at) {
     return 'active';
@@ -51,23 +65,29 @@ export function generateTemporaryPassword(length = 14) {
   return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
-export async function createManagedUserAccount(email: string, password: string, profile?: ManagedProfileInput) {
+export async function createManagedUserAccount(
+  email: string,
+  password: string,
+  profile?: ManagedProfileInput,
+  welcomeEmail?: ManagedWelcomeEmailInput,
+): Promise<ManagedAccountResult> {
   const normalizedEmail = email.trim().toLowerCase();
 
   if (!normalizedEmail) {
     throw new Error('Email is required to create login credentials.');
   }
 
-  const { data: managedData, error: managedError } = await supabase.functions.invoke<{ user?: User }>('create-managed-user-account', {
+  const { data: managedData, error: managedError } = await supabase.functions.invoke<ManagedAccountResult>('create-managed-user-account', {
     body: {
       email: normalizedEmail,
       password,
       profile,
+      welcomeEmail,
     },
   });
 
   if (!managedError && managedData?.user) {
-    return managedData.user;
+    return managedData;
   }
 
   throw new Error(managedError?.message ?? 'Managed account function is not available. Deploy the Supabase function before creating portal credentials.');

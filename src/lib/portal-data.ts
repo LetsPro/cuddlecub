@@ -5,10 +5,33 @@ export function staffHasPermission(staff: StaffRecord | null | undefined, permis
   return Boolean(staff?.permissions?.includes(permission) || staff?.permissions?.includes('all_students'));
 }
 
+export async function fetchAssignedClassIdsForStaff(staff: StaffRecord, schoolId: string) {
+  const assignedClassIds = new Set<string>();
+
+  if (staff.class_teacher_for) {
+    assignedClassIds.add(staff.class_teacher_for);
+  }
+
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id')
+    .eq('school_id', schoolId)
+    .eq('class_teacher_staff_id', staff.id);
+
+  if (error) throw error;
+
+  ((data ?? []) as Array<{ id: string }>).forEach((row) => {
+    assignedClassIds.add(row.id);
+  });
+
+  return Array.from(assignedClassIds);
+}
+
 export async function fetchStudentsForStaff(staff: StaffRecord, schoolId: string) {
   const canSeeAll = staffHasPermission(staff, 'student_access') || staffHasPermission(staff, 'attendance_manage') || staffHasPermission(staff, 'daily_activity');
+  const assignedClassIds = await fetchAssignedClassIdsForStaff(staff, schoolId);
 
-  if (!staff.class_teacher_for && !canSeeAll) {
+  if (!assignedClassIds.length && !canSeeAll) {
     return [] as StudentRecord[];
   }
 
@@ -19,8 +42,8 @@ export async function fetchStudentsForStaff(staff: StaffRecord, schoolId: string
     .eq('is_active', true)
     .order('first_name');
 
-  if (!canSeeAll && staff.class_teacher_for) {
-    query = query.eq('class_id', staff.class_teacher_for);
+  if (!canSeeAll && assignedClassIds.length) {
+    query = query.in('class_id', assignedClassIds);
   }
 
   const { data, error } = await query;
