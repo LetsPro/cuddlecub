@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
+import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
-import { buildStudentNameMap } from '../../lib/portal-data';
+import { buildStudentNameMap, formatStudentOption } from '../../lib/portal-data';
 import { useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
@@ -23,6 +24,22 @@ export function StaffAcademicsPage() {
   const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
   const defaultClassId = staffRecord?.class_teacher_for || students[0]?.class_id || '';
   const defaultSectionId = students[0]?.section_id || '';
+  const assignedClasses = useMemo(() => {
+    const classMap = new Map<string, string>();
+    students.forEach((student) => {
+      if (student.class_id) classMap.set(student.class_id, student.class_name || 'Assigned class');
+    });
+    return Array.from(classMap, ([id, name]) => ({ id, name }));
+  }, [students]);
+  const assignedSections = useMemo(() => {
+    const sectionMap = new Map<string, { id: string; classId: string; name: string }>();
+    students.forEach((student) => {
+      if (student.section_id && student.class_id) {
+        sectionMap.set(student.section_id, { id: student.section_id, classId: student.class_id, name: student.section_name || 'Assigned section' });
+      }
+    });
+    return Array.from(sectionMap.values());
+  }, [students]);
 
   const [worksheetForm, setWorksheetForm] = useState({ title: '', file_url: '', class_id: '', section_id: '' });
   const [taskForm, setTaskForm] = useState({ title: '', description: '', due_date: '', class_id: '', section_id: '' });
@@ -190,18 +207,38 @@ export function StaffAcademicsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard title="Upload worksheet" description="Add a worksheet or activity file for your class.">
           <form className="grid gap-4" onSubmit={saveWorksheet}>
-            <input className="form-input" placeholder="Worksheet title" onChange={(event) => setWorksheetForm((current) => ({ ...current, title: event.target.value }))} value={worksheetForm.title} />
-            <input className="form-input" placeholder="File URL" onChange={(event) => setWorksheetForm((current) => ({ ...current, file_url: event.target.value }))} value={worksheetForm.file_url} />
-            <button className="button-primary" type="submit">Save worksheet</button>
+            <PlacementFields
+              classes={assignedClasses}
+              classId={worksheetForm.class_id}
+              onChange={(classId, sectionId) => setWorksheetForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
+              sectionId={worksheetForm.section_id}
+              sections={assignedSections}
+            />
+            <input className="form-input" placeholder="Worksheet title" required onChange={(event) => setWorksheetForm((current) => ({ ...current, title: event.target.value }))} value={worksheetForm.title} />
+            <MediaField
+              helperText="Upload an image or select one already available in the school media library."
+              label="Worksheet image"
+              onChange={(value) => setWorksheetForm((current) => ({ ...current, file_url: value }))}
+              previewHeightClassName="h-36"
+              value={worksheetForm.file_url}
+            />
+            <button className="button-primary" disabled={!worksheetForm.class_id || !worksheetForm.file_url} type="submit">Save worksheet</button>
           </form>
         </SectionCard>
 
         <SectionCard title="Add homework / activity task" description="Share take-home or classroom tasks.">
           <form className="grid gap-4" onSubmit={saveTask}>
-            <input className="form-input" placeholder="Task title" onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} value={taskForm.title} />
+            <PlacementFields
+              classes={assignedClasses}
+              classId={taskForm.class_id}
+              onChange={(classId, sectionId) => setTaskForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
+              sectionId={taskForm.section_id}
+              sections={assignedSections}
+            />
+            <input className="form-input" placeholder="Task title" required onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} value={taskForm.title} />
             <textarea className="form-input min-h-28" placeholder="Task description" onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} value={taskForm.description} />
             <input className="form-input" type="date" onChange={(event) => setTaskForm((current) => ({ ...current, due_date: event.target.value }))} value={taskForm.due_date} />
-            <button className="button-primary" type="submit">Save task</button>
+            <button className="button-primary" disabled={!taskForm.class_id} type="submit">Save task</button>
           </form>
         </SectionCard>
       </div>
@@ -209,21 +246,28 @@ export function StaffAcademicsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard title="Add lesson summary" description="Record what was covered in class.">
           <form className="grid gap-4" onSubmit={saveLesson}>
-            <input className="form-input" placeholder="Lesson title" onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} value={lessonForm.title} />
+            <PlacementFields
+              classes={assignedClasses}
+              classId={lessonForm.class_id}
+              onChange={(classId, sectionId) => setLessonForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
+              sectionId={lessonForm.section_id}
+              sections={assignedSections}
+            />
+            <input className="form-input" placeholder="Lesson title" required onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} value={lessonForm.title} />
             <input className="form-input" placeholder="Objective" onChange={(event) => setLessonForm((current) => ({ ...current, objective: event.target.value }))} value={lessonForm.objective} />
             <textarea className="form-input min-h-28" placeholder="Activity summary" onChange={(event) => setLessonForm((current) => ({ ...current, activity_details: event.target.value }))} value={lessonForm.activity_details} />
             <input className="form-input" type="date" onChange={(event) => setLessonForm((current) => ({ ...current, lesson_date: event.target.value }))} value={lessonForm.lesson_date} />
-            <button className="button-primary" type="submit">Save lesson summary</button>
+            <button className="button-primary" disabled={!lessonForm.class_id} type="submit">Save lesson summary</button>
           </form>
         </SectionCard>
 
         <SectionCard title="Maintain child progress notes" description="Store observations and decide whether they are shared with parents.">
           <form className="grid gap-4" onSubmit={saveProgressNote}>
-            <select className="form-input" onChange={(event) => setNoteForm((current) => ({ ...current, student_id: event.target.value }))} value={noteForm.student_id}>
+            <select className="form-input" required onChange={(event) => setNoteForm((current) => ({ ...current, student_id: event.target.value }))} value={noteForm.student_id}>
               <option value="">Select student</option>
               {students.map((student) => (
                 <option key={student.id} value={student.id}>
-                  {student.first_name} {student.last_name}
+                  {formatStudentOption(student)}
                 </option>
               ))}
             </select>
@@ -232,8 +276,8 @@ export function StaffAcademicsPage() {
               <option value="learning_progress">Learning progress</option>
               <option value="behavior">Behavior note</option>
             </select>
-            <input className="form-input" placeholder="Note title" onChange={(event) => setNoteForm((current) => ({ ...current, title: event.target.value }))} value={noteForm.title} />
-            <textarea className="form-input min-h-28" placeholder="Summary" onChange={(event) => setNoteForm((current) => ({ ...current, summary: event.target.value }))} value={noteForm.summary} />
+            <input className="form-input" placeholder="Note title" required onChange={(event) => setNoteForm((current) => ({ ...current, title: event.target.value }))} value={noteForm.title} />
+            <textarea className="form-input min-h-28" placeholder="Summary" required onChange={(event) => setNoteForm((current) => ({ ...current, summary: event.target.value }))} value={noteForm.summary} />
             <label className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
               <input checked={noteForm.shared_with_parent} className="mr-3" onChange={(event) => setNoteForm((current) => ({ ...current, shared_with_parent: event.target.checked }))} type="checkbox" />
               Share note with parent
@@ -244,10 +288,17 @@ export function StaffAcademicsPage() {
       </div>
 
       <SectionCard title="Share class update" description="Publish a quick class update for admin and families.">
-        <form className="grid gap-4 md:grid-cols-[1fr_1.4fr_auto]" onSubmit={saveUpdate}>
-          <input className="form-input" placeholder="Update title" onChange={(event) => setUpdateForm((current) => ({ ...current, title: event.target.value }))} value={updateForm.title} />
+        <form className="grid gap-4 md:grid-cols-2" onSubmit={saveUpdate}>
+          <PlacementFields
+            classes={assignedClasses}
+            classId={updateForm.class_id}
+            onChange={(classId, sectionId) => setUpdateForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
+            sectionId={updateForm.section_id}
+            sections={assignedSections}
+          />
+          <input className="form-input" placeholder="Update title" required onChange={(event) => setUpdateForm((current) => ({ ...current, title: event.target.value }))} value={updateForm.title} />
           <input className="form-input" placeholder="Update description" onChange={(event) => setUpdateForm((current) => ({ ...current, description: event.target.value }))} value={updateForm.description} />
-          <button className="button-primary" type="submit">Publish update</button>
+          <button className="button-primary" disabled={!updateForm.class_id} type="submit">Publish update</button>
         </form>
       </SectionCard>
 
@@ -306,6 +357,37 @@ export function StaffAcademicsPage() {
             />
           </div>
         </SectionCard>
+      </div>
+    </div>
+  );
+}
+
+interface PlacementFieldsProps {
+  classes: Array<{ id: string; name: string }>;
+  sections: Array<{ id: string; classId: string; name: string }>;
+  classId: string;
+  sectionId: string;
+  onChange: (classId: string, sectionId: string) => void;
+}
+
+function PlacementFields({ classes, sections, classId, sectionId, onChange }: PlacementFieldsProps) {
+  const availableSections = sections.filter((section) => section.classId === classId);
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div>
+        <label className="form-label">Assigned class</label>
+        <select className="form-input" onChange={(event) => onChange(event.target.value, '')} required value={classId}>
+          <option value="">Select class</option>
+          {classes.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="form-label">Section</label>
+        <select className="form-input" onChange={(event) => onChange(classId, event.target.value)} value={sectionId}>
+          <option value="">All sections</option>
+          {availableSections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
+        </select>
       </div>
     </div>
   );

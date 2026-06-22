@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, UserRound } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
+import { Modal } from '../../components/Modal';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -62,9 +63,13 @@ export function StaffStudentsPage() {
     );
   }, [query, students]);
 
-  const selectedStudent = filteredStudents.find((student) => student.id === selectedStudentId) ?? filteredStudents[0] ?? null;
+  const selectedStudent = students.find((student) => student.id === selectedStudentId) ?? null;
   const canViewParents = staffHasPermission(staffRecord, 'parent_contact_view') || staffHasPermission(staffRecord, 'student_access');
   const canViewMedical = staffHasPermission(staffRecord, 'medical_view') || staffRecord?.role === 'teacher';
+  const assignedPlacements = useMemo(
+    () => Array.from(new Set(students.map((student) => `${student.class_name ?? 'Unassigned'} / ${student.section_name ?? 'No section'}`))),
+    [students],
+  );
 
   if (loading) {
     return (
@@ -87,23 +92,36 @@ export function StaffStudentsPage() {
       ) : null}
 
       <SectionCard title="Quick search" description="Find a student by name, admission number or class.">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input className="form-input pl-11" onChange={(event) => setQuery(event.target.value)} placeholder="Search students" value={query} />
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input className="form-input pl-11" onChange={(event) => setQuery(event.target.value)} placeholder="Search students" value={query} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Assigned classes</span>
+            {assignedPlacements.map((placement) => (
+              <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700" key={placement}>{placement}</span>
+            ))}
+            {!assignedPlacements.length ? <span className="text-sm text-slate-500">No class assignment found.</span> : null}
+          </div>
         </div>
       </SectionCard>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard title="Assigned student list" description="Students currently available inside your permissions scope.">
+      <SectionCard title="Assigned student list" description="Select a student to open the complete profile, photo, class placement, and permitted contact details.">
           <DataTable
             columns={[
               {
                 key: 'student',
                 label: 'Student',
                 render: (row) => (
-                  <button className="text-left" onClick={() => setSelectedStudentId(row.id)} type="button">
-                    <p className="font-bold text-slate-900">{row.first_name} {row.last_name}</p>
-                    <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{row.admission_number}</p>
+                  <button className="flex items-center gap-3 text-left" onClick={() => setSelectedStudentId(row.id)} type="button">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-slate-500">
+                      {row.photo_url ? <img alt={`${row.first_name} ${row.last_name}`} className="h-full w-full object-cover" src={row.photo_url} /> : <UserRound className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900">{row.first_name} {row.last_name}</p>
+                      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{row.admission_number}</p>
+                    </div>
                   </button>
                 ),
               },
@@ -114,39 +132,53 @@ export function StaffStudentsPage() {
             emptyMessage="No students found for your assignment."
             rows={filteredStudents}
           />
-        </SectionCard>
+      </SectionCard>
 
-        <SectionCard title="Student profile" description="Basic profile view for the selected student.">
-          {!selectedStudent ? (
-            <p className="text-sm text-slate-500">Select a student to view details.</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="font-bold text-slate-900">{selectedStudent.first_name} {selectedStudent.last_name}</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {selectedStudent.class_name ?? 'Unassigned'} · {selectedStudent.section_name ?? 'No section'}
-                </p>
+      <Modal
+        description="Complete student information available within your teacher permissions."
+        onClose={() => setSelectedStudentId(null)}
+        open={Boolean(selectedStudent)}
+        size="lg"
+        title={selectedStudent ? `${selectedStudent.first_name} ${selectedStudent.last_name}` : 'Student details'}
+      >
+        {selectedStudent ? (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-5 rounded-[1.5rem] bg-slate-50 p-5 sm:flex-row sm:items-center">
+              <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[1.5rem] bg-white text-slate-400 shadow-sm">
+                {selectedStudent.photo_url ? (
+                  <img alt={`${selectedStudent.first_name} ${selectedStudent.last_name}`} className="h-full w-full object-cover" src={selectedStudent.photo_url} />
+                ) : <UserRound className="h-10 w-10" />}
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Date of birth</p>
-                <p className="mt-1 text-sm text-slate-700">{formatDate(selectedStudent.dob)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Medical alerts</p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {canViewMedical ? selectedStudent.medical_notes || selectedStudent.allergy_details || 'No medical alerts recorded.' : 'Not permitted'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Parent contact</p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {canViewParents ? (parentContacts[selectedStudent.id]?.join(', ') || 'No linked parent contact found.') : 'Not permitted'}
+                <p className="text-xl font-extrabold text-slate-900">{selectedStudent.first_name} {selectedStudent.last_name}</p>
+                <p className="mt-1 text-sm text-slate-500">Admission no. {selectedStudent.admission_number}</p>
+                <p className="mt-3 inline-flex rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">
+                  {selectedStudent.class_name ?? 'Unassigned'} / {selectedStudent.section_name ?? 'No section'}
                 </p>
               </div>
             </div>
-          )}
-        </SectionCard>
-      </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Detail label="Date of birth" value={formatDate(selectedStudent.dob)} />
+              <Detail label="Gender" value={selectedStudent.gender || 'Not recorded'} />
+              <Detail label="Class assigned" value={selectedStudent.class_name ?? 'Unassigned'} />
+              <Detail label="Section" value={selectedStudent.section_name ?? 'No section'} />
+              <Detail label="Emergency contact" value={canViewParents ? [selectedStudent.emergency_contact_name, selectedStudent.emergency_contact_phone].filter(Boolean).join(' · ') || 'Not recorded' : 'Not permitted'} />
+              <Detail label="Parent contact" value={canViewParents ? parentContacts[selectedStudent.id]?.join(', ') || 'No linked parent contact found.' : 'Not permitted'} />
+              <Detail label="Allergy details" value={canViewMedical ? selectedStudent.allergy_details || 'None recorded' : 'Not permitted'} />
+              <Detail label="Medical notes" value={canViewMedical ? selectedStudent.medical_notes || 'None recorded' : 'Not permitted'} />
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-100 p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-700">{value}</p>
     </div>
   );
 }

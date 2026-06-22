@@ -5,6 +5,11 @@ export function staffHasPermission(staff: StaffRecord | null | undefined, permis
   return Boolean(staff?.permissions?.includes(permission) || staff?.permissions?.includes('all_students'));
 }
 
+export function formatStudentOption(student: StudentRecord) {
+  const placement = [student.class_name || 'Unassigned', student.section_name || 'No section'].join(' / ');
+  return `${student.first_name} ${student.last_name} - ${placement}`;
+}
+
 export async function fetchAssignedClassIdsForStaff(staff: StaffRecord, schoolId: string) {
   const assignedClassIds = new Set<string>();
 

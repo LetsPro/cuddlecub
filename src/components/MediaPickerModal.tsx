@@ -39,6 +39,7 @@ export function MediaPickerModal({
   const [message, setMessage] = useState<string | null>(null);
   const [selectedAssets, setSelectedAssets] = useState<MediaAsset[]>([]);
   const isMultiple = allowMultiple || Boolean(onSelectMultiple);
+  const canDelete = profile.role === 'admin';
 
   useEffect(() => {
     if (!open) {
@@ -232,9 +233,11 @@ export function MediaPickerModal({
                     </button>
                     <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
                       <span className="text-xs text-slate-400">{asset.media_type}</span>
-                      <button className="text-xs font-semibold text-rose-600 transition hover:text-rose-700" disabled={deletingId === asset.id} onClick={() => void handleDelete(asset)} type="button">
-                        {deletingId === asset.id ? 'Deleting...' : 'Delete'}
-                      </button>
+                      {canDelete ? (
+                        <button className="text-xs font-semibold text-rose-600 transition hover:text-rose-700" disabled={deletingId === asset.id} onClick={() => void handleDelete(asset)} type="button">
+                          {deletingId === asset.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      ) : null}
                     </div>
                   </article>
                 );

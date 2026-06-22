@@ -4,7 +4,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
-import { buildStudentNameMap } from '../../lib/portal-data';
+import { buildStudentNameMap, formatStudentOption } from '../../lib/portal-data';
 import { useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
@@ -126,11 +126,11 @@ export function StaffAttendancePage() {
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
             <div className="md:col-span-2">
               <label className="form-label">Student</label>
-              <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
+              <select className="form-input" required onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
                 <option value="">Select student</option>
                 {students.map((student) => (
                   <option key={student.id} value={student.id}>
-                    {student.first_name} {student.last_name}
+                    {formatStudentOption(student)}
                   </option>
                 ))}
               </select>

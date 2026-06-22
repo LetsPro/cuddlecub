@@ -75,6 +75,15 @@ export function ParentDailyActivityPage() {
               { key: 'date', label: 'Date', render: (row) => formatDate(row.activity_date) },
               { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.activity_type} /> },
               { key: 'summary', label: 'Summary', render: (row) => row.summary },
+              {
+                key: 'image',
+                label: 'Photo',
+                render: (row) => row.image_url ? (
+                  <a className="block h-12 w-12 overflow-hidden rounded-xl bg-slate-100" href={row.image_url} rel="noreferrer" target="_blank">
+                    <img alt={row.summary} className="h-full w-full object-cover" src={row.image_url} />
+                  </a>
+                ) : '-',
+              },
               { key: 'status', label: 'Tag', render: (row) => <StatusBadge value={row.status ?? 'logged'} /> },
             ]}
             emptyMessage="No daily activity updates found."

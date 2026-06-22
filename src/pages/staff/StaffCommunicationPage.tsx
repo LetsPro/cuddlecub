@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
+import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
 import { useStaffPortal } from '../../lib/portal-hooks';
+import { formatStudentOption } from '../../lib/portal-data';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDateTime } from '../../lib/utils';
 import type { StaffRequest } from '../../types/app';
@@ -100,13 +102,19 @@ export function StaffCommunicationPage() {
               <option value="">No student specific link</option>
               {students.map((student) => (
                 <option key={student.id} value={student.id}>
-                  {student.first_name} {student.last_name}
+                  {formatStudentOption(student)}
                 </option>
               ))}
             </select>
-            <input className="form-input" placeholder="Title" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
-            <textarea className="form-input min-h-28" placeholder="Message" onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
-            <input className="form-input" placeholder="File or photo URL (optional)" onChange={(event) => setForm((current) => ({ ...current, file_url: event.target.value }))} value={form.file_url} />
+            <input className="form-input" placeholder="Title" required onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
+            <textarea className="form-input min-h-28" placeholder="Message" required onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
+            <MediaField
+              helperText="Optional image for the request, incident, or class update."
+              label="Image attachment"
+              onChange={(value) => setForm((current) => ({ ...current, file_url: value }))}
+              previewHeightClassName="h-36"
+              value={form.file_url}
+            />
             <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value }))} value={form.priority}>
               <option value="normal">Normal priority</option>
               <option value="high">High priority</option>
@@ -123,6 +131,7 @@ export function StaffCommunicationPage() {
               { key: 'title', label: 'Title', render: (row) => row.title },
               { key: 'priority', label: 'Priority', render: (row) => <StatusBadge value={row.priority} /> },
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+              { key: 'file', label: 'Image', render: (row) => row.file_url ? <a className="font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">View</a> : '-' },
               { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
             ]}
             emptyMessage="No requests created yet."

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
+import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
-import { buildStudentNameMap } from '../../lib/portal-data';
+import { buildStudentNameMap, formatStudentOption } from '../../lib/portal-data';
 import { useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
@@ -23,6 +24,7 @@ export function StaffDailyActivityPage() {
     summary: '',
     details: '',
     status: '',
+    image_url: '',
     shared_with_parent: true,
   });
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
@@ -62,11 +64,12 @@ export function StaffDailyActivityPage() {
         summary: form.summary,
         details: form.details || null,
         status: form.status || null,
+        image_url: form.image_url || null,
         shared_with_parent: form.shared_with_parent,
       });
 
       if (error) throw error;
-      setForm({ student_id: '', activity_date: today, activity_type: 'meal', summary: '', details: '', status: '', shared_with_parent: true });
+      setForm({ student_id: '', activity_date: today, activity_type: 'meal', summary: '', details: '', status: '', image_url: '', shared_with_parent: true });
       await loadLogs();
       setSubmitMessage('Daily activity saved.');
     } catch (error) {
@@ -91,11 +94,11 @@ export function StaffDailyActivityPage() {
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
             <div className="md:col-span-2">
               <label className="form-label">Student</label>
-              <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
+              <select className="form-input" required onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
                 <option value="">Select student</option>
                 {students.map((student) => (
                   <option key={student.id} value={student.id}>
-                    {student.first_name} {student.last_name}
+                    {formatStudentOption(student)}
                   </option>
                 ))}
               </select>
@@ -120,7 +123,7 @@ export function StaffDailyActivityPage() {
             </div>
             <div className="md:col-span-2">
               <label className="form-label">Summary</label>
-              <input className="form-input" onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))} value={form.summary} />
+              <input className="form-input" required onChange={(event) => setForm((current) => ({ ...current, summary: event.target.value }))} value={form.summary} />
             </div>
             <div className="md:col-span-2">
               <label className="form-label">Details</label>
@@ -135,6 +138,15 @@ export function StaffDailyActivityPage() {
               Share with parent
             </label>
             <div className="md:col-span-2">
+              <MediaField
+                helperText="Optional classroom, meal, activity, or learning photo to share with the parent."
+                label="Activity image"
+                onChange={(value) => setForm((current) => ({ ...current, image_url: value }))}
+                previewHeightClassName="h-40"
+                value={form.image_url}
+              />
+            </div>
+            <div className="md:col-span-2">
               <button className="button-primary" type="submit">Save update</button>
             </div>
           </form>
@@ -147,6 +159,7 @@ export function StaffDailyActivityPage() {
               { key: 'date', label: 'Date', render: (row) => formatDate(row.activity_date) },
               { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.activity_type} /> },
               { key: 'summary', label: 'Summary', render: (row) => row.summary },
+              { key: 'image', label: 'Image', render: (row) => row.image_url ? <a className="font-bold theme-text-primary" href={row.image_url} rel="noreferrer" target="_blank">View image</a> : '-' },
               { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
             ]}
             emptyMessage="No daily activity entries yet."

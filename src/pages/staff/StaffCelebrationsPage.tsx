@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
+import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
 import { useStaffPortal } from '../../lib/portal-hooks';
+import { formatStudentOption } from '../../lib/portal-data';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { daysUntil, formatDate, formatDateTime } from '../../lib/utils';
 import type { ContentPost, StaffRequest } from '../../types/app';
@@ -133,13 +135,19 @@ export function StaffCelebrationsPage() {
               <option value="">No student link</option>
               {students.map((student) => (
                 <option key={student.id} value={student.id}>
-                  {student.first_name} {student.last_name}
+                  {formatStudentOption(student)}
                 </option>
               ))}
             </select>
-            <input className="form-input" placeholder="Title" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
-            <textarea className="form-input min-h-28" placeholder="Message" onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
-            <input className="form-input" placeholder="Photo URL" onChange={(event) => setForm((current) => ({ ...current, file_url: event.target.value }))} value={form.file_url} />
+            <input className="form-input" placeholder="Title" required onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
+            <textarea className="form-input min-h-28" placeholder="Message" required onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
+            <MediaField
+              helperText="Upload the birthday or celebration image to send with this request."
+              label="Celebration image"
+              onChange={(value) => setForm((current) => ({ ...current, file_url: value }))}
+              previewHeightClassName="h-36"
+              value={form.file_url}
+            />
             <button className="button-primary" type="submit">Send to admin</button>
           </form>
         </SectionCard>
@@ -152,6 +160,7 @@ export function StaffCelebrationsPage() {
               { key: 'category', label: 'Type', render: (row) => <StatusBadge value={row.category} /> },
               { key: 'title', label: 'Title', render: (row) => row.title },
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+              { key: 'file', label: 'Image', render: (row) => row.file_url ? <a className="font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">View</a> : '-' },
               { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
             ]}
             emptyMessage="No submissions yet."

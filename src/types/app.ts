@@ -300,6 +300,7 @@ export interface DailyActivityRecord {
   activity_date: string;
   activity_type: string;
   summary: string;
+  image_url?: string | null;
   details: string | null;
   status: string | null;
   shared_with_parent?: boolean;
