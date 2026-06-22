@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock3, UserRound, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock3, Search, UserRound, Users } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -11,6 +11,7 @@ import { formatDate } from '../../lib/utils';
 import type { StaffAttendanceRecord, StaffRecord, StudentAttendanceRecord, StudentRecord } from '../../types/app';
 
 const today = new Date().toISOString().slice(0, 10);
+const PAGE_SIZE = 10;
 
 const studentAttendanceSeed = {
   student_id: '',
@@ -36,6 +37,12 @@ export function AttendancePage() {
   const [staffAttendance, setStaffAttendance] = useState<StaffAttendanceRecord[]>([]);
   const [studentForm, setStudentForm] = useState(studentAttendanceSeed);
   const [staffForm, setStaffForm] = useState(staffAttendanceSeed);
+  const [studentNameFilter, setStudentNameFilter] = useState('');
+  const [studentDateFilter, setStudentDateFilter] = useState('');
+  const [studentPage, setStudentPage] = useState(1);
+  const [staffNameFilter, setStaffNameFilter] = useState('');
+  const [staffDateFilter, setStaffDateFilter] = useState('');
+  const [staffPage, setStaffPage] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,9 +56,14 @@ export function AttendancePage() {
       const [studentResponse, staffResponse, studentAttendanceResponse, staffAttendanceResponse] = await Promise.all([
         supabase.from('students').select('*').eq('school_id', school.id).eq('is_active', true).order('first_name'),
         supabase.from('staff').select('*').eq('school_id', school.id).eq('is_active', true).order('full_name'),
-        supabase.from('student_attendance').select('*').eq('school_id', school.id).order('attendance_date', { ascending: false }).limit(30),
-        supabase.from('staff_attendance').select('*').eq('school_id', school.id).order('attendance_date', { ascending: false }).limit(30),
+        supabase.from('student_attendance').select('*').eq('school_id', school.id).order('attendance_date', { ascending: false }).limit(500),
+        supabase.from('staff_attendance').select('*').eq('school_id', school.id).order('attendance_date', { ascending: false }).limit(500),
       ]);
+
+      if (studentResponse.error) throw studentResponse.error;
+      if (staffResponse.error) throw staffResponse.error;
+      if (studentAttendanceResponse.error) throw studentAttendanceResponse.error;
+      if (staffAttendanceResponse.error) throw staffAttendanceResponse.error;
 
       setStudents((studentResponse.data ?? []) as StudentRecord[]);
       setStaff((staffResponse.data ?? []) as StaffRecord[]);
@@ -129,6 +141,26 @@ export function AttendancePage() {
   const todayStudentCount = studentAttendance.filter((item) => item.attendance_date === today).length;
   const todayAbsentCount = studentAttendance.filter((item) => item.attendance_date === today && item.status === 'absent').length;
   const todayStaffCount = staffAttendance.filter((item) => item.attendance_date === today).length;
+  const filteredStudentAttendance = useMemo(() => {
+    const normalizedName = studentNameFilter.trim().toLowerCase();
+    return studentAttendance.filter((record) => {
+      const nameMatches = !normalizedName || (studentLookup[record.student_id] ?? '').toLowerCase().includes(normalizedName);
+      const dateMatches = !studentDateFilter || record.attendance_date === studentDateFilter;
+      return nameMatches && dateMatches;
+    });
+  }, [studentAttendance, studentLookup, studentNameFilter, studentDateFilter]);
+  const filteredStaffAttendance = useMemo(() => {
+    const normalizedName = staffNameFilter.trim().toLowerCase();
+    return staffAttendance.filter((record) => {
+      const nameMatches = !normalizedName || (staffLookup[record.staff_id] ?? '').toLowerCase().includes(normalizedName);
+      const dateMatches = !staffDateFilter || record.attendance_date === staffDateFilter;
+      return nameMatches && dateMatches;
+    });
+  }, [staffAttendance, staffLookup, staffNameFilter, staffDateFilter]);
+  const studentPageCount = Math.max(1, Math.ceil(filteredStudentAttendance.length / PAGE_SIZE));
+  const staffPageCount = Math.max(1, Math.ceil(filteredStaffAttendance.length / PAGE_SIZE));
+  const visibleStudentAttendance = filteredStudentAttendance.slice((studentPage - 1) * PAGE_SIZE, studentPage * PAGE_SIZE);
+  const visibleStaffAttendance = filteredStaffAttendance.slice((staffPage - 1) * PAGE_SIZE, staffPage * PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -236,33 +268,82 @@ export function AttendancePage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <SectionCard title="Student attendance log" description="Recent attendance entries across the school.">
-          <DataTable
-            columns={[
-              { key: 'student', label: 'Student', render: (row) => studentLookup[row.student_id] ?? 'Unknown student' },
-              { key: 'date', label: 'Date', render: (row) => formatDate(row.attendance_date) },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              { key: 'late', label: 'Late', render: (row) => (row.late_minutes ? `${row.late_minutes} min` : '-') },
-              { key: 'note', label: 'Note', render: (row) => row.note ?? '-' },
-            ]}
-            emptyMessage="No student attendance recorded."
-            rows={studentAttendance}
+          <AttendanceFilters
+            date={studentDateFilter}
+            name={studentNameFilter}
+            onDateChange={(value) => { setStudentDateFilter(value); setStudentPage(1); }}
+            onNameChange={(value) => { setStudentNameFilter(value); setStudentPage(1); }}
+            placeholder="Filter by student name"
           />
+          <div className="mt-4 h-[590px] overflow-auto rounded-[1.5rem] bg-white">
+            <DataTable
+              columns={[
+                { key: 'student', label: 'Student', render: (row) => studentLookup[row.student_id] ?? 'Unknown student' },
+                { key: 'date', label: 'Date', render: (row) => formatDate(row.attendance_date) },
+                { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+                { key: 'late', label: 'Late', render: (row) => (row.late_minutes ? `${row.late_minutes} min` : '-') },
+                { key: 'note', label: 'Note', render: (row) => row.note ?? '-' },
+              ]}
+              emptyMessage="No student attendance matches these filters."
+              rows={visibleStudentAttendance}
+            />
+          </div>
+          <PaginationControls currentPage={studentPage} onPageChange={setStudentPage} pageCount={studentPageCount} total={filteredStudentAttendance.length} />
         </SectionCard>
 
         <SectionCard title="Staff attendance log" description="Recent team attendance entries.">
-          <DataTable
-            columns={[
-              { key: 'staff', label: 'Staff', render: (row) => staffLookup[row.staff_id] ?? 'Unknown staff' },
-              { key: 'date', label: 'Date', render: (row) => formatDate(row.attendance_date) },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              { key: 'late', label: 'Late', render: (row) => (row.late_minutes ? `${row.late_minutes} min` : '-') },
-              { key: 'note', label: 'Note', render: (row) => row.note ?? '-' },
-            ]}
-            emptyMessage="No staff attendance recorded."
-            rows={staffAttendance}
+          <AttendanceFilters
+            date={staffDateFilter}
+            name={staffNameFilter}
+            onDateChange={(value) => { setStaffDateFilter(value); setStaffPage(1); }}
+            onNameChange={(value) => { setStaffNameFilter(value); setStaffPage(1); }}
+            placeholder="Filter by staff name"
           />
+          <div className="mt-4 h-[590px] overflow-auto rounded-[1.5rem] bg-white">
+            <DataTable
+              columns={[
+                { key: 'staff', label: 'Staff', render: (row) => staffLookup[row.staff_id] ?? 'Unknown staff' },
+                { key: 'date', label: 'Date', render: (row) => formatDate(row.attendance_date) },
+                { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+                { key: 'late', label: 'Late', render: (row) => (row.late_minutes ? `${row.late_minutes} min` : '-') },
+                { key: 'note', label: 'Note', render: (row) => row.note ?? '-' },
+              ]}
+              emptyMessage="No staff attendance matches these filters."
+              rows={visibleStaffAttendance}
+            />
+          </div>
+          <PaginationControls currentPage={staffPage} onPageChange={setStaffPage} pageCount={staffPageCount} total={filteredStaffAttendance.length} />
         </SectionCard>
       </div>
+    </div>
+  );
+}
+
+interface AttendanceFiltersProps {
+  name: string;
+  date: string;
+  placeholder: string;
+  onNameChange: (value: string) => void;
+  onDateChange: (value: string) => void;
+}
+
+function AttendanceFilters({ name, date, placeholder, onNameChange, onDateChange }: AttendanceFiltersProps) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-[1fr_180px_auto]">
+      <div className="relative"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input aria-label={placeholder} className="form-input pl-11" onChange={(event) => onNameChange(event.target.value)} placeholder={placeholder} value={name} /></div>
+      <input aria-label="Filter by date" className="form-input" onChange={(event) => onDateChange(event.target.value)} type="date" value={date} />
+      <button className="button-secondary px-3" disabled={!name && !date} onClick={() => { onNameChange(''); onDateChange(''); }} type="button">Clear</button>
+    </div>
+  );
+}
+
+function PaginationControls({ currentPage, pageCount, total, onPageChange }: { currentPage: number; pageCount: number; total: number; onPageChange: (page: number) => void }) {
+  const firstRow = total ? (currentPage - 1) * PAGE_SIZE + 1 : 0;
+  const lastRow = Math.min(currentPage * PAGE_SIZE, total);
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-slate-500">Showing {firstRow}-{lastRow} of {total}</p>
+      <div className="flex items-center gap-2"><button aria-label="Previous page" className="button-secondary px-3 py-2" disabled={currentPage <= 1} onClick={() => onPageChange(currentPage - 1)} type="button"><ChevronLeft className="h-4 w-4" /></button><span className="min-w-20 text-center text-sm font-semibold text-slate-600">Page {currentPage} of {pageCount}</span><button aria-label="Next page" className="button-secondary px-3 py-2" disabled={currentPage >= pageCount} onClick={() => onPageChange(currentPage + 1)} type="button"><ChevronRight className="h-4 w-4" /></button></div>
     </div>
   );
 }
