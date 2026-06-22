@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
-import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -17,12 +16,14 @@ export function ParentFeesPage() {
   const { parentRecord, students, message } = useParentPortal();
   const [invoices, setInvoices] = useState<FeeInvoice[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState('');
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
 
   const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
 
   useEffect(() => {
     if (!students.length) return;
+    setSelectedStudentId((current) => current || students[0].id);
     void loadFees();
   }, [students.map((student) => student.id).join('|')]);
 
@@ -63,6 +64,12 @@ export function ParentFeesPage() {
     }
   }
 
+  const filteredInvoices = selectedStudentId ? invoices.filter((invoice) => invoice.student_id === selectedStudentId) : invoices;
+  const filteredInvoiceIds = new Set(filteredInvoices.map((invoice) => invoice.id));
+  const filteredPayments = payments.filter((payment) => filteredInvoiceIds.has(payment.fee_invoice_id));
+  const totalDue = filteredInvoices.reduce((sum, invoice) => sum + Math.max(invoice.amount_due - (invoice.amount_paid ?? 0), 0), 0);
+  const totalPaid = filteredInvoices.reduce((sum, invoice) => sum + (invoice.amount_paid ?? 0), 0);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -75,47 +82,35 @@ export function ParentFeesPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
 
-      <SectionCard title="Payment note" description="Online payment integration is not wired yet in this build.">
-        <p className="text-sm text-slate-500">The portal currently shows dues, payment history and receipt downloads. Live online fee payment can be added in the next phase.</p>
+      <SectionCard title="Child" description="Choose a child to view their fees.">
+        <select className="form-input max-w-sm" onChange={(event) => setSelectedStudentId(event.target.value)} value={selectedStudentId}>
+          {students.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name}</option>)}
+        </select>
       </SectionCard>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5"><p className="text-sm font-semibold text-amber-700">Amount due</p><p className="mt-2 text-2xl font-extrabold text-slate-900">{formatCurrency(totalDue)}</p></div>
+        <div className="rounded-2xl border border-teal-100 bg-teal-50 p-5"><p className="text-sm font-semibold text-teal-700">Amount paid</p><p className="mt-2 text-2xl font-extrabold text-slate-900">{formatCurrency(totalPaid)}</p></div>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <SectionCard title="Fee dues" description="Current invoices for your linked children.">
-          <DataTable
-            columns={[
-              { key: 'student', label: 'Child', render: (row) => studentNameMap[row.student_id] ?? 'Unknown child' },
-              { key: 'invoice', label: 'Invoice', render: (row) => row.invoice_number },
-              { key: 'due', label: 'Due date', render: (row) => formatDate(row.due_date) },
-              { key: 'amount', label: 'Amount due', render: (row) => formatCurrency(row.amount_due) },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              {
-                key: 'receipt',
-                label: 'PDF',
-                render: (row) => (
-                  <button className="button-secondary gap-1 px-3 py-2 text-xs" onClick={() => downloadInvoice(row)} type="button">
-                    <Download className="h-3.5 w-3.5" />
-                    PDF
-                  </button>
-                ),
-              },
-            ]}
-            emptyMessage="No invoices found."
-            rows={invoices}
-          />
+        <SectionCard title="Fee invoices" description="Current and past invoices.">
+          <div className="space-y-3">
+            {filteredInvoices.map((invoice) => (
+              <article className="rounded-2xl border border-slate-100 bg-white p-4" key={invoice.id}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold text-slate-900">{invoice.invoice_number}</p><p className="mt-1 text-sm text-slate-500">Due {formatDate(invoice.due_date)}</p></div><StatusBadge value={invoice.status} /></div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4"><div><p className="text-xs font-semibold text-slate-400">Balance</p><p className="mt-1 font-extrabold text-slate-900">{formatCurrency(Math.max(invoice.amount_due - (invoice.amount_paid ?? 0), 0))}</p></div><button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => downloadInvoice(invoice)} type="button"><Download className="h-4 w-4" />Download PDF</button></div>
+              </article>
+            ))}
+            {!filteredInvoices.length ? <p className="text-sm text-slate-500">No invoices found.</p> : null}
+          </div>
         </SectionCard>
 
         <SectionCard title="Payment history" description="Latest payment confirmations recorded by school admin.">
-          <DataTable
-            columns={[
-              { key: 'invoice', label: 'Invoice', render: (row) => invoices.find((invoice) => invoice.id === row.fee_invoice_id)?.invoice_number ?? 'Unknown invoice' },
-              { key: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount) },
-              { key: 'date', label: 'Date', render: (row) => formatDate(row.payment_date) },
-              { key: 'mode', label: 'Mode', render: (row) => row.payment_mode },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-            ]}
-            emptyMessage="No payments recorded yet."
-            rows={payments}
-          />
+          <div className="space-y-3">
+            {filteredPayments.map((payment) => <article className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between" key={payment.id}><div><p className="font-bold text-slate-900">{formatCurrency(payment.amount)}</p><p className="mt-1 text-sm text-slate-500">{formatDate(payment.payment_date)} · {payment.payment_mode}</p></div><StatusBadge value={payment.status} /></article>)}
+            {!filteredPayments.length ? <p className="text-sm text-slate-500">No payments recorded yet.</p> : null}
+          </div>
         </SectionCard>
       </div>
     </div>

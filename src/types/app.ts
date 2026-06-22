@@ -377,6 +377,10 @@ export interface ParentRequest {
   status: string;
   pickup_person_name: string | null;
   pickup_person_phone: string | null;
+  response_message: string | null;
+  response_by_name: string | null;
+  response_by_role: string | null;
+  responded_at: string | null;
   created_at: string;
 }
 

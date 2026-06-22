@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { DataTable } from '../../components/DataTable';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
-import { buildStudentNameMap } from '../../lib/portal-data';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
@@ -15,8 +13,6 @@ export function ParentDailyActivityPage() {
   const [activities, setActivities] = useState<DailyActivityRecord[]>([]);
   const [notes, setNotes] = useState<StudentProgressNote[]>([]);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
-
-  const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
 
   useEffect(() => {
     if (!students.length) return;
@@ -69,39 +65,22 @@ export function ParentDailyActivityPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <SectionCard title="Daily updates" description="The latest care and classroom updates shared for the selected child.">
-          <DataTable
-            columns={[
-              { key: 'child', label: 'Child', render: (row) => studentNameMap[row.student_id] ?? 'Unknown child' },
-              { key: 'date', label: 'Date', render: (row) => formatDate(row.activity_date) },
-              { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.activity_type} /> },
-              { key: 'summary', label: 'Summary', render: (row) => row.summary },
-              {
-                key: 'image',
-                label: 'Photo',
-                render: (row) => row.image_url ? (
-                  <a className="block h-12 w-12 overflow-hidden rounded-xl bg-slate-100" href={row.image_url} rel="noreferrer" target="_blank">
-                    <img alt={row.summary} className="h-full w-full object-cover" src={row.image_url} />
-                  </a>
-                ) : '-',
-              },
-              { key: 'status', label: 'Tag', render: (row) => <StatusBadge value={row.status ?? 'logged'} /> },
-            ]}
-            emptyMessage="No daily activity updates found."
-            rows={filteredActivities}
-          />
+          <div className="space-y-4">
+            {filteredActivities.map((activity) => (
+              <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white" key={activity.id}>
+                {activity.image_url ? <a className="block h-52 bg-slate-100" href={activity.image_url} rel="noreferrer" target="_blank"><img alt={activity.summary} className="h-full w-full object-cover" src={activity.image_url} /></a> : null}
+                <div className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><StatusBadge value={activity.activity_type} /><p className="text-xs font-semibold text-slate-400">{formatDate(activity.activity_date)}</p></div><p className="mt-3 font-bold text-slate-900">{activity.summary}</p>{activity.details ? <p className="mt-2 text-sm leading-6 text-slate-600">{activity.details}</p> : null}{activity.status ? <div className="mt-3"><StatusBadge value={activity.status} /></div> : null}</div>
+              </article>
+            ))}
+            {!filteredActivities.length ? <p className="text-sm text-slate-500">No daily activity updates found.</p> : null}
+          </div>
         </SectionCard>
 
         <SectionCard title="Teacher observations" description="Progress notes explicitly shared with parents.">
-          <DataTable
-            columns={[
-              { key: 'child', label: 'Child', render: (row) => studentNameMap[row.student_id] ?? 'Unknown child' },
-              { key: 'title', label: 'Note', render: (row) => row.title },
-              { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.note_type} /> },
-              { key: 'summary', label: 'Summary', render: (row) => row.summary },
-            ]}
-            emptyMessage="No progress notes shared yet."
-            rows={filteredNotes}
-          />
+          <div className="space-y-3">
+            {filteredNotes.map((note) => <article className="rounded-2xl border border-slate-100 bg-white p-4" key={note.id}><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-bold text-slate-900">{note.title}</p><StatusBadge value={note.note_type} /></div><p className="mt-2 text-sm leading-6 text-slate-600">{note.summary}</p><p className="mt-2 text-xs font-semibold text-slate-400">{formatDate(note.created_at)}</p></article>)}
+            {!filteredNotes.length ? <p className="text-sm text-slate-500">No progress notes shared yet.</p> : null}
+          </div>
         </SectionCard>
       </div>
     </div>

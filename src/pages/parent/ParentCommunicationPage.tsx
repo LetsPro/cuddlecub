@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -43,17 +42,16 @@ export function ParentCommunicationPage() {
       ) : null}
 
       <SectionCard title="Communication history" description="Recent messages delivered through the school notification system.">
-        <DataTable
-          columns={[
-            { key: 'title', label: 'Title', render: (row) => row.title },
-            { key: 'message', label: 'Message', render: (row) => row.message },
-            { key: 'channel', label: 'Channel', render: (row) => row.channel },
-            { key: 'time', label: 'Sent / scheduled', render: (row) => formatDateTime(row.sent_at || row.scheduled_at) },
-            { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-          ]}
-          emptyMessage="No communication history found."
-          rows={notifications}
-        />
+        <div className="space-y-3">
+          {notifications.map((notification) => (
+            <article className="rounded-2xl border border-slate-100 bg-white p-4" key={notification.id}>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold text-slate-900">{notification.title}</p><p className="mt-1 text-xs font-semibold text-slate-400">{formatDateTime(notification.sent_at || notification.scheduled_at)}</p></div><StatusBadge value={notification.status} /></div>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{notification.message}</p>
+              {notification.attachment_url ? <a className="mt-3 inline-flex text-sm font-bold theme-text-primary" href={notification.attachment_url} rel="noreferrer" target="_blank">View attachment</a> : null}
+            </article>
+          ))}
+          {!notifications.length ? <p className="text-sm text-slate-500">No communication history found.</p> : null}
+        </div>
       </SectionCard>
     </div>
   );

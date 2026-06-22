@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Paperclip } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
+import { ParentRequestQueue } from '../../components/ParentRequestQueue';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
@@ -95,6 +96,8 @@ export function CommunicationPage() {
       {message ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message}</div>
       ) : null}
+
+      <ParentRequestQueue description="All parent requests for the school. Review them, update status, and send a response." title="Requests from parents" />
 
       <div className="grid gap-6">
         <SectionCard title="Create dashboard notice" description="Log single, class-wise or school-wide notices that stay on the dashboard only.">

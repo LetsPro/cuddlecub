@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
+import { ParentRequestQueue } from '../../components/ParentRequestQueue';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
@@ -87,6 +88,12 @@ export function StaffCommunicationPage() {
       {message || submitMessage ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || submitMessage}</div>
       ) : null}
+
+      <ParentRequestQueue
+        description="Requests linked to students in your assigned class. Update the status and reply to the parent."
+        studentIds={students.map((student) => student.id)}
+        title="Requests from assigned parents"
+      />
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard title="Create request" description="Anything that needs admin visibility or approval goes here.">

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -27,6 +26,14 @@ export function ParentRequestsPage() {
   useEffect(() => {
     if (!parentRecord) return;
     void loadRequests();
+    const channel = supabase
+      .channel(`parent-requests-${parentRecord.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'parent_requests', filter: `parent_id=eq.${parentRecord.id}` }, () => void loadRequests())
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [parentRecord?.id]);
 
   async function loadRequests() {
@@ -90,7 +97,7 @@ export function ParentRequestsPage() {
               <option value="meeting">Request meeting</option>
               <option value="callback">Request callback</option>
             </select>
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
+            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} required value={form.student_id}>
               <option value="">Select child</option>
               {students.map((student) => (
                 <option key={student.id} value={student.id}>
@@ -98,8 +105,8 @@ export function ParentRequestsPage() {
                 </option>
               ))}
             </select>
-            <input className="form-input" placeholder="Title" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
-            <textarea className="form-input min-h-28" placeholder="Message" onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
+            <input className="form-input" placeholder="Title" required onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
+            <textarea className="form-input min-h-28" placeholder="Message" required onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
             <input className="form-input" type="date" onChange={(event) => setForm((current) => ({ ...current, requested_for: event.target.value }))} value={form.requested_for} />
             <input className="form-input" placeholder="Pickup person name (if applicable)" onChange={(event) => setForm((current) => ({ ...current, pickup_person_name: event.target.value }))} value={form.pickup_person_name} />
             <input className="form-input" placeholder="Pickup person phone (if applicable)" onChange={(event) => setForm((current) => ({ ...current, pickup_person_phone: event.target.value }))} value={form.pickup_person_phone} />
@@ -108,17 +115,19 @@ export function ParentRequestsPage() {
         </SectionCard>
 
         <SectionCard title="Request history" description="Track request status and dates.">
-          <DataTable
-            columns={[
-              { key: 'category', label: 'Type', render: (row) => <StatusBadge value={row.category} /> },
-              { key: 'title', label: 'Title', render: (row) => row.title },
-              { key: 'for', label: 'Requested for', render: (row) => formatDate(row.requested_for) },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
-            ]}
-            emptyMessage="No requests sent yet."
-            rows={requests}
-          />
+          <div className="space-y-3">
+            {requests.map((request) => (
+              <article className="rounded-2xl border border-slate-100 bg-white p-4" key={request.id}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-900">{request.title}</p><StatusBadge value={request.category} /></div><p className="mt-1 text-xs font-semibold text-slate-400">Sent {formatDateTime(request.created_at)}</p></div><StatusBadge value={request.status} /></div>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{request.message}</p>
+                {request.requested_for ? <p className="mt-2 text-xs font-semibold text-slate-400">Requested for {formatDate(request.requested_for)}</p> : null}
+                {request.response_message ? (
+                  <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50 p-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Response from {request.response_by_name || 'school'}</p><p className="mt-2 text-sm leading-6 text-slate-700">{request.response_message}</p>{request.responded_at ? <p className="mt-2 text-xs font-semibold text-slate-400">{formatDateTime(request.responded_at)}</p> : null}</div>
+                ) : <p className="mt-3 text-sm text-slate-400">Waiting for school response.</p>}
+              </article>
+            ))}
+            {!requests.length ? <p className="text-sm text-slate-500">No requests sent yet.</p> : null}
+          </div>
         </SectionCard>
       </div>
     </div>

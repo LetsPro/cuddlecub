@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, CalendarDays, Clock3 } from 'lucide-react';
-import { DataTable } from '../../components/DataTable';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
-import { buildStudentNameMap } from '../../lib/portal-data';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
@@ -16,8 +14,6 @@ export function ParentAttendancePage() {
   const [records, setRecords] = useState<StudentAttendanceRecord[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
-
-  const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
 
   useEffect(() => {
     if (!students.length) return;
@@ -74,17 +70,15 @@ export function ParentAttendancePage() {
       </SectionCard>
 
       <SectionCard title="Attendance history" description="Recent daily attendance records for the selected child.">
-        <DataTable
-          columns={[
-            { key: 'child', label: 'Child', render: (row) => studentNameMap[row.student_id] ?? 'Unknown child' },
-            { key: 'date', label: 'Date', render: (row) => formatDate(row.attendance_date) },
-            { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-            { key: 'late', label: 'Late', render: (row) => (row.late_minutes ? `${row.late_minutes} min` : '-') },
-            { key: 'note', label: 'Note', render: (row) => row.note ?? '-' },
-          ]}
-          emptyMessage="No attendance records found."
-          rows={filtered}
-        />
+        <div className="space-y-3">
+          {filtered.map((record) => (
+            <article className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between" key={record.id}>
+              <div><p className="font-bold text-slate-900">{formatDate(record.attendance_date)}</p><p className="mt-1 text-sm text-slate-500">{record.note || (record.late_minutes ? `Late by ${record.late_minutes} minutes` : 'No note')}</p></div>
+              <StatusBadge value={record.status} />
+            </article>
+          ))}
+          {!filtered.length ? <p className="text-sm text-slate-500">No attendance records found.</p> : null}
+        </div>
       </SectionCard>
     </div>
   );

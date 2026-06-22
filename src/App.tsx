@@ -42,6 +42,7 @@ import { ParentDashboardPage } from './pages/parent/ParentDashboardPage';
 import { ParentChildPage } from './pages/parent/ParentChildPage';
 import { ParentAttendancePage } from './pages/parent/ParentAttendancePage';
 import { ParentDailyActivityPage } from './pages/parent/ParentDailyActivityPage';
+import { ParentLearningPage } from './pages/parent/ParentLearningPage';
 import { ParentFeesPage } from './pages/parent/ParentFeesPage';
 import { ParentCommunicationPage } from './pages/parent/ParentCommunicationPage';
 import { ParentRequestsPage } from './pages/parent/ParentRequestsPage';
@@ -339,6 +340,7 @@ export default function App() {
             <Route element={<ParentChildPage />} path="child" />
             <Route element={<ParentAttendancePage />} path="attendance" />
             <Route element={<ParentDailyActivityPage />} path="daily-activity" />
+            <Route element={<ParentLearningPage />} path="learning" />
             <Route element={<ParentFeesPage />} path="fees" />
             <Route element={<ParentCommunicationPage />} path="communication" />
             <Route element={<ParentRequestsPage />} path="requests" />

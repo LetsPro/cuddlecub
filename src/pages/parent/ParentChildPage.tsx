@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable } from '../../components/DataTable';
+import { UserRound } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { useAppContext } from '../../lib/app-context';
@@ -67,55 +67,56 @@ export function ParentChildPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <SectionCard title="Children" description="Select a child to see the detailed profile.">
-          <DataTable
-            columns={[
-              {
-                key: 'child',
-                label: 'Child',
-                render: (row) => (
-                  <button className="text-left" onClick={() => setSelectedStudentId(row.id)} type="button">
-                    <p className="font-bold text-slate-900">{row.first_name} {row.last_name}</p>
-                    <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{row.admission_number}</p>
-                  </button>
-                ),
-              },
-              { key: 'class', label: 'Class', render: (row) => `${row.class_name ?? 'Unassigned'} · ${row.section_name ?? 'No section'}` },
-              { key: 'dob', label: 'DOB', render: (row) => formatDate(row.dob) },
-            ]}
-            emptyMessage="No linked children found."
-            rows={students}
-          />
-        </SectionCard>
+      <SectionCard title="Choose child" description="Select a child to view their latest school profile.">
+        <div className="flex flex-wrap gap-3">
+          {students.map((student) => (
+            <button
+              className={`rounded-2xl border px-4 py-3 text-left transition ${selectedStudent?.id === student.id ? 'theme-border-primary-soft bg-brand-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              key={student.id}
+              onClick={() => setSelectedStudentId(student.id)}
+              type="button"
+            >
+              <p className="font-bold text-slate-900">{student.first_name} {student.last_name}</p>
+              <p className="mt-1 text-xs text-slate-500">{student.class_name ?? 'No class'} · {student.section_name ?? 'No section'}</p>
+            </button>
+          ))}
+          {!students.length ? <p className="text-sm text-slate-500">No linked children found.</p> : null}
+        </div>
+      </SectionCard>
 
-        <SectionCard title="Selected child profile" description="Basic profile, health notes and admission context.">
+      <SectionCard title="Child profile" description="Information maintained by the school.">
           {!selectedStudent ? (
             <p className="text-sm text-slate-500">No child selected.</p>
           ) : (
-            <div className="space-y-4">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="font-bold text-slate-900">{selectedStudent.first_name} {selectedStudent.last_name}</p>
-                <p className="mt-1 text-sm text-slate-500">{selectedStudent.class_name ?? 'Unassigned'} · {selectedStudent.section_name ?? 'No section'}</p>
+            <div className="space-y-6">
+              <div className="flex flex-col gap-5 rounded-[1.5rem] bg-slate-50 p-5 sm:flex-row sm:items-center">
+                <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[1.5rem] bg-white text-slate-400 shadow-sm">
+                  {selectedStudent.photo_url ? <img alt={`${selectedStudent.first_name} ${selectedStudent.last_name}`} className="h-full w-full object-cover" src={selectedStudent.photo_url} /> : <UserRound className="h-10 w-10" />}
+                </div>
+                <div>
+                  <p className="text-xl font-extrabold text-slate-900">{selectedStudent.first_name} {selectedStudent.last_name}</p>
+                  <p className="mt-1 text-sm text-slate-500">Admission no. {selectedStudent.admission_number}</p>
+                  <p className="mt-3 inline-flex rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">{selectedStudent.class_name ?? 'No class'} / {selectedStudent.section_name ?? 'No section'}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Medical notes</p>
-                <p className="mt-1 text-sm text-slate-700">{selectedStudent.medical_notes || selectedStudent.allergy_details || 'No shared notes.'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Teacher</p>
-                <p className="mt-1 text-sm text-slate-700">{getTeacher(selectedStudent)?.full_name ?? 'Teacher not assigned yet'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Admission details</p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {admissions.find((admission) => admission.student_id === selectedStudent.id)?.status ?? 'No admission record'} · {selectedStudent.admission_number}
-                </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <ProfileItem label="Date of birth" value={formatDate(selectedStudent.dob)} />
+                <ProfileItem label="Gender" value={selectedStudent.gender || 'Not recorded'} />
+                <ProfileItem label="Class teacher" value={getTeacher(selectedStudent)?.full_name ?? 'Not assigned'} />
+                <ProfileItem label="Class" value={selectedStudent.class_name ?? 'Not assigned'} />
+                <ProfileItem label="Section" value={selectedStudent.section_name ?? 'Not assigned'} />
+                <ProfileItem label="Admission status" value={admissions.find((admission) => admission.student_id === selectedStudent.id)?.status ?? 'No admission record'} />
+                <ProfileItem label="Emergency contact" value={[selectedStudent.emergency_contact_name, selectedStudent.emergency_contact_phone].filter(Boolean).join(' · ') || 'Not recorded'} />
+                <ProfileItem label="Allergies" value={selectedStudent.allergy_details || 'None recorded'} />
+                <ProfileItem label="Medical notes" value={selectedStudent.medical_notes || 'None recorded'} />
               </div>
             </div>
           )}
-        </SectionCard>
-      </div>
+      </SectionCard>
     </div>
   );
+}
+
+function ProfileItem({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl border border-slate-100 bg-white p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{label}</p><p className="mt-2 text-sm leading-6 text-slate-700">{value}</p></div>;
 }

@@ -127,6 +127,7 @@ export function ParentDashboardPage() {
         actions={
           <>
             <Link className="button-secondary" to="/parent/child">Child profile</Link>
+            <Link className="button-secondary" to="/parent/learning">Learning</Link>
             <Link className="button-secondary" to="/parent/fees">Fees</Link>
             <Link className="button-secondary" to="/parent/requests">Send request</Link>
           </>
