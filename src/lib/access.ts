@@ -101,7 +101,7 @@ export async function sendManagedPasswordReset(email: string) {
   }
 
   const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-    redirectTo: window.location.origin,
+    redirectTo: `${window.location.origin}/update-password`,
   });
 
   if (error) {
