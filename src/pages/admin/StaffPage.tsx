@@ -279,6 +279,7 @@ export function StaffPage() {
           user_id: user.id,
           access_status: member.is_active ? 'invited' : 'disabled',
           access_invited_at: accessInvitedAt,
+          portal_password: temporaryPassword,
         })
         .eq('id', member.id);
 
@@ -507,7 +508,7 @@ export function StaffPage() {
   const accessTeacherCredential = accessTeacher
     ? generatedCredential?.teacherId === accessTeacher.id
       ? generatedCredential
-      : generatedCredentials[accessTeacher.id] ?? null
+      : generatedCredentials[accessTeacher.id] ?? (accessTeacher.portal_password ? { teacherId: accessTeacher.id, fullName: accessTeacher.full_name, email: accessTeacher.email ?? '', temporaryPassword: accessTeacher.portal_password } : null)
     : null;
   const summary = useMemo(
     () => ({
@@ -601,11 +602,11 @@ export function StaffPage() {
               key: 'password',
               label: 'Password',
               render: (row) => {
-                const credential = generatedCredentials[row.id];
+                const password = row.portal_password ?? generatedCredentials[row.id]?.temporaryPassword ?? null;
 
-                return credential?.temporaryPassword ? (
+                return password ? (
                   <div>
-                    <p className="font-mono text-sm text-slate-900">{credential.temporaryPassword}</p>
+                    <p className="font-mono text-sm text-slate-900">{password}</p>
                     <p className="mt-1 text-xs text-slate-500">Managed</p>
                   </div>
                 ) : (

@@ -171,6 +171,7 @@ export interface StaffRecord {
   access_invited_at?: string | null;
   password_reset_sent_at?: string | null;
   last_login_at?: string | null;
+  portal_password?: string | null;
 }
 
 export interface StudentRecord {
