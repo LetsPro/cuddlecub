@@ -1,0 +1,2 @@
+id,school_id,inquiry_id,student_id,status,submitted_at,confirmed_at,waitlist_rank,onboarding_notes,created_at,updated_at
+5a4967b2-48f7-40c3-b784-a0fdb3570bc9,9560e7a8-9b98-4616-ad3a-4cfccc8bca49,925e49d6-bab8-4666-9643-9fafc11a5bee,0eb38be3-592f-4c68-bf32-dcd3b1db8376,enrolled,2026-06-03,2026-06-03,,,2026-06-03 09:38:04.271721+00,2026-06-03 09:38:04.271721+00
