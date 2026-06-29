@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
+import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
@@ -6,7 +8,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
 import { buildStudentNameMap, formatStudentOption } from '../../lib/portal-data';
-import { useStaffPortal } from '../../lib/portal-hooks';
+import { useClassFilter, useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
 import type { DailyActivityRecord } from '../../types/app';
@@ -15,8 +17,12 @@ const today = new Date().toISOString().slice(0, 10);
 
 export function StaffDailyActivityPage() {
   const { school } = useAppContext();
-  const { students, message } = useStaffPortal();
+  const { staffRecord, students, message } = useStaffPortal();
+  const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
+    useClassFilter(students, staffRecord?.class_teacher_for);
+
   const [logs, setLogs] = useState<DailyActivityRecord[]>([]);
+  const [logsQuery, setLogsQuery] = useState('');
   const [form, setForm] = useState({
     student_id: '',
     activity_date: today,
@@ -77,6 +83,18 @@ export function StaffDailyActivityPage() {
     }
   }
 
+  const filteredStudentIdSet = useMemo(() => new Set(filteredStudents.map((s) => s.id)), [filteredStudents]);
+
+  const displayedLogs = useMemo(() => {
+    const normalized = logsQuery.trim().toLowerCase();
+    return logs.filter((row) => {
+      if (!filteredStudentIdSet.has(row.student_id)) return false;
+      if (!normalized) return true;
+      const name = (studentNameMap[row.student_id] ?? '').toLowerCase();
+      return name.includes(normalized) || row.activity_type.includes(normalized) || row.summary.toLowerCase().includes(normalized);
+    });
+  }, [logs, filteredStudentIdSet, logsQuery, studentNameMap]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -89,6 +107,13 @@ export function StaffDailyActivityPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || submitMessage}</div>
       ) : null}
 
+      <ClassSelector
+        classes={availableClasses}
+        counts={studentCounts}
+        onChange={setSelectedClassId}
+        selectedClassId={selectedClassId}
+      />
+
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <SectionCard title="Add daily update" description="Create a single activity log entry for a child.">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
@@ -96,7 +121,7 @@ export function StaffDailyActivityPage() {
               <label className="form-label">Student</label>
               <select className="form-input" required onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
                 <option value="">Select student</option>
-                {students.map((student) => (
+                {filteredStudents.map((student) => (
                   <option key={student.id} value={student.id}>
                     {formatStudentOption(student)}
                   </option>
@@ -152,19 +177,25 @@ export function StaffDailyActivityPage() {
           </form>
         </SectionCard>
 
-        <SectionCard title="Recent updates" description="Latest daily activity logs for your students.">
-          <DataTable
-            columns={[
-              { key: 'student', label: 'Student', render: (row) => studentNameMap[row.student_id] ?? 'Unknown student' },
-              { key: 'date', label: 'Date', render: (row) => formatDate(row.activity_date) },
-              { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.activity_type} /> },
-              { key: 'summary', label: 'Summary', render: (row) => row.summary },
-              { key: 'image', label: 'Image', render: (row) => row.image_url ? <a className="font-bold theme-text-primary" href={row.image_url} rel="noreferrer" target="_blank">View image</a> : '-' },
-              { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
-            ]}
-            emptyMessage="No daily activity entries yet."
-            rows={logs}
-          />
+        <SectionCard title="Recent updates" description="Latest daily activity logs for the selected class.">
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input className="form-input pl-11" onChange={(event) => setLogsQuery(event.target.value)} placeholder="Search by name, type or summary" value={logsQuery} />
+            </div>
+            <DataTable
+              columns={[
+                { key: 'student', label: 'Student', render: (row) => studentNameMap[row.student_id] ?? 'Unknown student' },
+                { key: 'date', label: 'Date', render: (row) => formatDate(row.activity_date) },
+                { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.activity_type} /> },
+                { key: 'summary', label: 'Summary', render: (row) => row.summary },
+                { key: 'image', label: 'Image', render: (row) => row.image_url ? <a className="font-bold theme-text-primary" href={row.image_url} rel="noreferrer" target="_blank">View image</a> : '-' },
+                { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
+              ]}
+              emptyMessage="No daily activity entries yet."
+              rows={displayedLogs}
+            />
+          </div>
         </SectionCard>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppContext } from './app-context';
 import { fetchLinkedStudentsForParent, fetchStudentsForStaff } from './portal-data';
 import { getCurrentParentRecord, getCurrentStaffRecord } from './portal';
@@ -73,4 +73,39 @@ export function useParentPortal() {
   }, [load]);
 
   return { parentRecord, students, loading, message, reload: load };
+}
+
+export function useClassFilter(students: StudentRecord[], defaultClassId?: string | null) {
+  const availableClasses = useMemo(() => {
+    const classMap = new Map<string, string>();
+    students.forEach((s) => {
+      if (s.class_id) classMap.set(s.class_id, s.class_name ?? 'Class');
+    });
+    return Array.from(classMap, ([id, name]) => ({ id, name }));
+  }, [students]);
+
+  const [selectedClassId, setSelectedClassId] = useState('');
+
+  useEffect(() => {
+    if (!availableClasses.length) return;
+    if (selectedClassId && availableClasses.some((c) => c.id === selectedClassId)) return;
+    const preferred = defaultClassId && availableClasses.find((c) => c.id === defaultClassId);
+    setSelectedClassId(preferred ? defaultClassId! : availableClasses[0].id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableClasses.map((c) => c.id).join(','), defaultClassId]);
+
+  const filteredStudents = useMemo(
+    () => (selectedClassId ? students.filter((s) => s.class_id === selectedClassId) : students),
+    [students, selectedClassId],
+  );
+
+  const studentCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    students.forEach((s) => {
+      if (s.class_id) counts[s.class_id] = (counts[s.class_id] ?? 0) + 1;
+    });
+    return counts;
+  }, [students]);
+
+  return { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts };
 }

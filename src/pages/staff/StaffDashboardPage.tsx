@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, BookOpenText, Cake, Clock3, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ClassSelector } from '../../components/ClassSelector';
 import { ThemedLoader } from '../../components/ThemedLoader';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -8,7 +9,7 @@ import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
 import { fetchAssignedClassIdsForStaff } from '../../lib/portal-data';
-import { useStaffPortal } from '../../lib/portal-hooks';
+import { useClassFilter, useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { daysUntil, formatDate, formatDateTime } from '../../lib/utils';
 import type { NotificationRecord, TimetableEntry } from '../../types/app';
@@ -17,42 +18,40 @@ interface BirthdayItem {
   id: string;
   name: string;
   dob: string;
+  classId: string | null;
 }
 
 export function StaffDashboardPage() {
   const { school } = useAppContext();
   const { staffRecord, students, loading, message } = useStaffPortal();
-  const [todayAttendanceCount, setTodayAttendanceCount] = useState(0);
-  const [todayActivityCount, setTodayActivityCount] = useState(0);
+  const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
+    useClassFilter(students, staffRecord?.class_teacher_for);
+
+  const [attendedIds, setAttendedIds] = useState<string[]>([]);
+  const [activeIds, setActiveIds] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
-  const [birthdays, setBirthdays] = useState<BirthdayItem[]>([]);
+  const [allBirthdays, setAllBirthdays] = useState<BirthdayItem[]>([]);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
 
-  const studentIds = useMemo(() => students.map((student) => student.id), [students]);
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     if (!staffRecord) return;
     void loadDashboard();
-  }, [staffRecord?.id, school.id, studentIds.join('|')]);
+  }, [staffRecord?.id, school.id, students.map((s) => s.id).join('|')]);
 
   async function loadDashboard() {
     if (!staffRecord) return;
     setLoadMessage(null);
 
     try {
-      const studentIdList = studentIds;
+      const studentIdList = students.map((s) => s.id);
       const assignedClassIds = await fetchAssignedClassIdsForStaff(staffRecord, school.id);
-      const timetableQuery = supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time').limit(6);
+      const timetableQuery = supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time').limit(10);
       const assignedTimetableQuery = assignedClassIds.length ? timetableQuery.in('class_id', assignedClassIds) : timetableQuery;
-      const [
-        studentAttendanceResponse,
-        activityResponse,
-        notificationResponse,
-        timetableResponse,
-        studentBirthdaysResponse,
-      ] = await Promise.all([
+
+      const [attendanceRes, activityRes, notificationRes, timetableRes, birthdayRes] = await Promise.all([
         studentIdList.length
           ? supabase.from('student_attendance').select('student_id').in('student_id', studentIdList).eq('attendance_date', today)
           : Promise.resolve({ data: [], error: null }),
@@ -61,29 +60,56 @@ export function StaffDashboardPage() {
           : Promise.resolve({ data: [], error: null }),
         supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(5),
         assignedTimetableQuery,
-        studentIdList.length ? supabase.from('students').select('id, first_name, last_name, dob').in('id', studentIdList) : Promise.resolve({ data: [], error: null }),
+        studentIdList.length
+          ? supabase.from('students').select('id, first_name, last_name, dob, class_id').in('id', studentIdList)
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
-      if (studentAttendanceResponse.error) throw studentAttendanceResponse.error;
-      if (activityResponse.error) throw activityResponse.error;
-      if (notificationResponse.error) throw notificationResponse.error;
-      if (timetableResponse.error) throw timetableResponse.error;
-      if (studentBirthdaysResponse.error) throw studentBirthdaysResponse.error;
+      if (attendanceRes.error) throw attendanceRes.error;
+      if (activityRes.error) throw activityRes.error;
+      if (notificationRes.error) throw notificationRes.error;
+      if (timetableRes.error) throw timetableRes.error;
+      if (birthdayRes.error) throw birthdayRes.error;
 
-      setTodayAttendanceCount((studentAttendanceResponse.data ?? []).length);
-      setTodayActivityCount((activityResponse.data ?? []).length);
-      setNotifications((notificationResponse.data ?? []) as NotificationRecord[]);
-      setTimetableEntries((timetableResponse.data ?? []) as TimetableEntry[]);
-      setBirthdays(
-        ((studentBirthdaysResponse.data ?? []) as Array<{ id: string; first_name: string; last_name: string; dob: string }>)
-          .map((student) => ({ id: student.id, name: `${student.first_name} ${student.last_name}`, dob: student.dob }))
-          .sort((left, right) => daysUntil(left.dob) - daysUntil(right.dob))
-          .slice(0, 5),
+      setAttendedIds(((attendanceRes.data ?? []) as Array<{ student_id: string }>).map((r) => r.student_id));
+      setActiveIds(((activityRes.data ?? []) as Array<{ student_id: string }>).map((r) => r.student_id));
+      setNotifications((notificationRes.data ?? []) as NotificationRecord[]);
+      setTimetableEntries((timetableRes.data ?? []) as TimetableEntry[]);
+      setAllBirthdays(
+        ((birthdayRes.data ?? []) as Array<{ id: string; first_name: string; last_name: string; dob: string; class_id: string | null }>).map(
+          (s) => ({ id: s.id, name: `${s.first_name} ${s.last_name}`, dob: s.dob, classId: s.class_id }),
+        ),
       );
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
     }
   }
+
+  const filteredStudentIdSet = useMemo(() => new Set(filteredStudents.map((s) => s.id)), [filteredStudents]);
+
+  const pendingAttendance = useMemo(
+    () => Math.max(filteredStudents.length - attendedIds.filter((id) => filteredStudentIdSet.has(id)).length, 0),
+    [filteredStudents, attendedIds, filteredStudentIdSet],
+  );
+
+  const pendingActivities = useMemo(
+    () => Math.max(filteredStudents.length - activeIds.filter((id) => filteredStudentIdSet.has(id)).length, 0),
+    [filteredStudents, activeIds, filteredStudentIdSet],
+  );
+
+  const upcomingBirthdays = useMemo(
+    () =>
+      allBirthdays
+        .filter((b) => filteredStudentIdSet.has(b.id))
+        .sort((a, b) => daysUntil(a.dob) - daysUntil(b.dob))
+        .slice(0, 5),
+    [allBirthdays, filteredStudentIdSet],
+  );
+
+  const filteredTimetable = useMemo(
+    () => (selectedClassId ? timetableEntries.filter((e) => e.class_id === selectedClassId) : timetableEntries),
+    [timetableEntries, selectedClassId],
+  );
 
   if (loading) {
     return (
@@ -100,9 +126,6 @@ export function StaffDashboardPage() {
       </SectionCard>
     );
   }
-
-  const pendingAttendance = Math.max(students.length - todayAttendanceCount, 0);
-  const pendingActivities = Math.max(students.length - todayActivityCount, 0);
 
   return (
     <div className="space-y-6">
@@ -123,33 +146,47 @@ export function StaffDashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
 
+      <ClassSelector
+        classes={availableClasses}
+        counts={studentCounts}
+        onChange={setSelectedClassId}
+        selectedClassId={selectedClassId}
+      />
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Users} label="Assigned students" value={students.length} meta="Your quick roster" />
+        <StatCard icon={Users} label="Students in class" value={filteredStudents.length} meta="Selected class roster" />
         <StatCard icon={Bell} label="Attendance pending" tone="amber" value={pendingAttendance} meta="Still to mark today" />
-        <StatCard icon={BookOpenText} label="Daily activities pending" tone="teal" value={pendingActivities} meta="Students without updates" />
-        <StatCard icon={Clock3} label="Timetable items" tone="slate" value={timetableEntries.length} meta="Upcoming class slots" />
+        <StatCard icon={BookOpenText} label="Activities pending" tone="teal" value={pendingActivities} meta="Students without updates" />
+        <StatCard icon={Clock3} label="Timetable slots" tone="slate" value={filteredTimetable.length} meta="Class schedule items" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard title="Assigned class overview" description="The students currently visible inside your workspace.">
+        <SectionCard title="Class roster" description="Students assigned to the selected class.">
           <div className="grid gap-3 sm:grid-cols-2">
-            {students.slice(0, 6).map((student) => (
+            {filteredStudents.slice(0, 8).map((student) => (
               <div key={student.id} className="rounded-2xl border border-slate-100 bg-white p-4">
                 <p className="font-bold text-slate-900">{student.first_name} {student.last_name}</p>
                 <p className="mt-1 text-sm text-slate-500">{student.class_name ?? 'Unassigned'} · {student.section_name ?? 'No section'}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-400">{student.admission_number}</p>
               </div>
             ))}
-            {students.length === 0 ? <p className="text-sm text-slate-500">No assigned students found.</p> : null}
+            {filteredStudents.length > 8 && (
+              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 p-4">
+                <Link className="text-sm font-semibold theme-text-primary" to="/staff/students">
+                  +{filteredStudents.length - 8} more students
+                </Link>
+              </div>
+            )}
+            {filteredStudents.length === 0 ? <p className="text-sm text-slate-500">No students found for this class.</p> : null}
           </div>
         </SectionCard>
 
-        <SectionCard title="Upcoming birthdays" description="Students in your view with birthdays coming up.">
+        <SectionCard title="Upcoming birthdays" description="Students in the selected class with birthdays coming up.">
           <div className="space-y-3">
-            {birthdays.length === 0 ? (
+            {upcomingBirthdays.length === 0 ? (
               <p className="text-sm text-slate-500">No birthdays found.</p>
             ) : (
-              birthdays.map((item) => (
+              upcomingBirthdays.map((item) => (
                 <div key={item.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                   <div>
                     <p className="font-bold text-slate-900">{item.name}</p>
@@ -187,17 +224,17 @@ export function StaffDashboardPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Timetable view" description="Your current class timetable snapshot.">
+        <SectionCard title="Timetable view" description="Class schedule for the selected class.">
           <div className="space-y-3">
-            {timetableEntries.length === 0 ? (
-              <p className="text-sm text-slate-500">No timetable entries mapped to your class yet.</p>
+            {filteredTimetable.length === 0 ? (
+              <p className="text-sm text-slate-500">No timetable entries for this class yet.</p>
             ) : (
-              timetableEntries.map((entry) => (
+              filteredTimetable.map((entry) => (
                 <div key={entry.id} className="rounded-2xl border border-slate-100 p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="font-bold text-slate-900">{entry.title}</p>
-                      <p className="text-sm text-slate-500">{entry.weekday} · {entry.start_time} - {entry.end_time}</p>
+                      <p className="text-sm text-slate-500">{entry.weekday} · {entry.start_time} – {entry.end_time}</p>
                     </div>
                     <StatusBadge value={entry.category ?? 'class'} />
                   </div>

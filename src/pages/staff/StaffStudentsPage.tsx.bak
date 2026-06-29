@@ -1,22 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, UserRound } from 'lucide-react';
-import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ThemedLoader } from '../../components/ThemedLoader';
-import { useClassFilter, useStaffPortal } from '../../lib/portal-hooks';
+import { useStaffPortal } from '../../lib/portal-hooks';
 import { staffHasPermission } from '../../lib/portal-data';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
 
 export function StaffStudentsPage() {
   const { staffRecord, students, loading, message } = useStaffPortal();
-  const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
-    useClassFilter(students, staffRecord?.class_teacher_for);
-
   const [query, setQuery] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [parentContacts, setParentContacts] = useState<Record<string, string[]>>({});
@@ -56,19 +52,24 @@ export function StaffStudentsPage() {
     }
   }
 
-  const displayedStudents = useMemo(() => {
+  const filteredStudents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return filteredStudents;
-    return filteredStudents.filter((s) =>
-      `${s.first_name} ${s.last_name} ${s.admission_number} ${s.class_name ?? ''} ${s.section_name ?? ''}`
+    if (!normalized) return students;
+
+    return students.filter((student) =>
+      `${student.first_name} ${student.last_name} ${student.admission_number} ${student.class_name ?? ''} ${student.section_name ?? ''}`
         .toLowerCase()
         .includes(normalized),
     );
-  }, [query, filteredStudents]);
+  }, [query, students]);
 
   const selectedStudent = students.find((student) => student.id === selectedStudentId) ?? null;
   const canViewParents = staffHasPermission(staffRecord, 'parent_contact_view') || staffHasPermission(staffRecord, 'student_access');
   const canViewMedical = staffHasPermission(staffRecord, 'medical_view') || staffRecord?.role === 'teacher';
+  const assignedPlacements = useMemo(
+    () => Array.from(new Set(students.map((student) => `${student.class_name ?? 'Unassigned'} / ${student.section_name ?? 'No section'}`))),
+    [students],
+  );
 
   if (loading) {
     return (
@@ -90,17 +91,19 @@ export function StaffStudentsPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
 
-      <ClassSelector
-        classes={availableClasses}
-        counts={studentCounts}
-        onChange={setSelectedClassId}
-        selectedClassId={selectedClassId}
-      />
-
       <SectionCard title="Quick search" description="Find a student by name, admission number or class.">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input className="form-input pl-11" onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, admission number or class" value={query} />
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input className="form-input pl-11" onChange={(event) => setQuery(event.target.value)} placeholder="Search students" value={query} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Assigned classes</span>
+            {assignedPlacements.map((placement) => (
+              <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700" key={placement}>{placement}</span>
+            ))}
+            {!assignedPlacements.length ? <span className="text-sm text-slate-500">No class assignment found.</span> : null}
+          </div>
         </div>
       </SectionCard>
 
@@ -127,7 +130,7 @@ export function StaffStudentsPage() {
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.is_active ? 'active' : 'inactive'} /> },
             ]}
             emptyMessage="No students found for your assignment."
-            rows={displayedStudents}
+            rows={filteredStudents}
           />
       </SectionCard>
 

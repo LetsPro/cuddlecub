@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
+import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
-import { useStaffPortal } from '../../lib/portal-hooks';
+import { useClassFilter, useStaffPortal } from '../../lib/portal-hooks';
 import { formatStudentOption } from '../../lib/portal-data';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { daysUntil, formatDate, formatDateTime } from '../../lib/utils';
@@ -20,9 +22,12 @@ interface BirthdayRow {
 export function StaffCelebrationsPage() {
   const { school } = useAppContext();
   const { staffRecord, students, message } = useStaffPortal();
-  const [birthdays, setBirthdays] = useState<BirthdayRow[]>([]);
+  const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
+    useClassFilter(students, staffRecord?.class_teacher_for);
+
   const [publishedPosts, setPublishedPosts] = useState<ContentPost[]>([]);
   const [submissions, setSubmissions] = useState<StaffRequest[]>([]);
+  const [submissionsQuery, setSubmissionsQuery] = useState('');
   const [form, setForm] = useState({
     category: 'birthday_photo',
     student_id: '',
@@ -57,12 +62,6 @@ export function StaffCelebrationsPage() {
 
       setPublishedPosts((postResponse.data ?? []) as ContentPost[]);
       setSubmissions((submissionResponse.data ?? []) as StaffRequest[]);
-      setBirthdays(
-        students
-          .map((student) => ({ id: student.id, name: `${student.first_name} ${student.last_name}`, dob: student.dob }))
-          .sort((left, right) => daysUntil(left.dob) - daysUntil(right.dob))
-          .slice(0, 8),
-      );
     } catch (error) {
       setSubmitMessage(getErrorMessage(error));
     }
@@ -96,6 +95,20 @@ export function StaffCelebrationsPage() {
     }
   }
 
+  const upcomingBirthdays = useMemo<BirthdayRow[]>(
+    () =>
+      filteredStudents
+        .map((student) => ({ id: student.id, name: `${student.first_name} ${student.last_name}`, dob: student.dob }))
+        .sort((left, right) => daysUntil(left.dob) - daysUntil(right.dob))
+        .slice(0, 8),
+    [filteredStudents],
+  );
+
+  const displayedSubmissions = useMemo(() => {
+    const q = submissionsQuery.trim().toLowerCase();
+    return q ? submissions.filter((r) => r.title.toLowerCase().includes(q) || r.category.toLowerCase().includes(q)) : submissions;
+  }, [submissions, submissionsQuery]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -108,10 +121,17 @@ export function StaffCelebrationsPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || submitMessage}</div>
       ) : null}
 
+      <ClassSelector
+        classes={availableClasses}
+        counts={studentCounts}
+        onChange={setSelectedClassId}
+        selectedClassId={selectedClassId}
+      />
+
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard title="Upcoming birthdays" description="Students in your classroom with birthdays coming up.">
+        <SectionCard title="Upcoming birthdays" description="Students in the selected class with birthdays coming up.">
           <div className="space-y-3">
-            {birthdays.map((item) => (
+            {upcomingBirthdays.map((item) => (
               <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-100 p-4">
                 <div>
                   <p className="font-bold text-slate-900">{item.name}</p>
@@ -120,7 +140,7 @@ export function StaffCelebrationsPage() {
                 <div className="text-sm font-semibold text-slate-500">{daysUntil(item.dob)} days</div>
               </div>
             ))}
-            {birthdays.length === 0 ? <p className="text-sm text-slate-500">No student birthdays found.</p> : null}
+            {upcomingBirthdays.length === 0 ? <p className="text-sm text-slate-500">No student birthdays found.</p> : null}
           </div>
         </SectionCard>
 
@@ -133,7 +153,7 @@ export function StaffCelebrationsPage() {
             </select>
             <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
               <option value="">No student link</option>
-              {students.map((student) => (
+              {filteredStudents.map((student) => (
                 <option key={student.id} value={student.id}>
                   {formatStudentOption(student)}
                 </option>
@@ -155,17 +175,23 @@ export function StaffCelebrationsPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard title="Your submissions" description="Celebrate support items already sent to admin.">
-          <DataTable
-            columns={[
-              { key: 'category', label: 'Type', render: (row) => <StatusBadge value={row.category} /> },
-              { key: 'title', label: 'Title', render: (row) => row.title },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              { key: 'file', label: 'Image', render: (row) => row.file_url ? <a className="font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">View</a> : '-' },
-              { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
-            ]}
-            emptyMessage="No submissions yet."
-            rows={submissions}
-          />
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input className="form-input pl-11" onChange={(event) => setSubmissionsQuery(event.target.value)} placeholder="Search submissions" value={submissionsQuery} />
+            </div>
+            <DataTable
+              columns={[
+                { key: 'category', label: 'Type', render: (row) => <StatusBadge value={row.category} /> },
+                { key: 'title', label: 'Title', render: (row) => row.title },
+                { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+                { key: 'file', label: 'Image', render: (row) => row.file_url ? <a className="font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">View</a> : '-' },
+                { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
+              ]}
+              emptyMessage="No submissions yet."
+              rows={displayedSubmissions}
+            />
+          </div>
         </SectionCard>
 
         <SectionCard title="Published school creatives" description="Recent posts available from the school content studio.">

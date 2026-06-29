@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
+import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
@@ -6,7 +8,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
 import { buildStudentNameMap, formatStudentOption } from '../../lib/portal-data';
-import { useStaffPortal } from '../../lib/portal-hooks';
+import { useClassFilter, useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
 import type { ClassroomUpdate, HomeworkTask, LessonPlan, StudentProgressNote, WorksheetRecord } from '../../types/app';
@@ -14,12 +16,19 @@ import type { ClassroomUpdate, HomeworkTask, LessonPlan, StudentProgressNote, Wo
 export function StaffAcademicsPage() {
   const { school } = useAppContext();
   const { staffRecord, students, message } = useStaffPortal();
+  const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
+    useClassFilter(students, staffRecord?.class_teacher_for);
   const [worksheets, setWorksheets] = useState<WorksheetRecord[]>([]);
   const [tasks, setTasks] = useState<HomeworkTask[]>([]);
   const [lessonPlans, setLessonPlans] = useState<LessonPlan[]>([]);
   const [progressNotes, setProgressNotes] = useState<StudentProgressNote[]>([]);
   const [updates, setUpdates] = useState<ClassroomUpdate[]>([]);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
+  const [worksheetQuery, setWorksheetQuery] = useState('');
+  const [taskQuery, setTaskQuery] = useState('');
+  const [lessonQuery, setLessonQuery] = useState('');
+  const [noteQuery, setNoteQuery] = useState('');
+  const [updateQuery, setUpdateQuery] = useState('');
 
   const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
   const defaultClassId = staffRecord?.class_teacher_for || students[0]?.class_id || '';
@@ -192,6 +201,38 @@ export function StaffAcademicsPage() {
     }
   }
 
+  const filteredStudentIdSet = useMemo(() => new Set(filteredStudents.map((s) => s.id)), [filteredStudents]);
+
+  const displayedWorksheets = useMemo(() => {
+    const q = worksheetQuery.trim().toLowerCase();
+    return q ? worksheets.filter((r) => r.title.toLowerCase().includes(q)) : worksheets;
+  }, [worksheets, worksheetQuery]);
+
+  const displayedTasks = useMemo(() => {
+    const q = taskQuery.trim().toLowerCase();
+    return q ? tasks.filter((r) => r.title.toLowerCase().includes(q)) : tasks;
+  }, [tasks, taskQuery]);
+
+  const displayedLessonPlans = useMemo(() => {
+    const q = lessonQuery.trim().toLowerCase();
+    return q ? lessonPlans.filter((r) => r.title.toLowerCase().includes(q) || (r.objective ?? '').toLowerCase().includes(q)) : lessonPlans;
+  }, [lessonPlans, lessonQuery]);
+
+  const displayedProgressNotes = useMemo(() => {
+    const q = noteQuery.trim().toLowerCase();
+    return progressNotes.filter((r) => {
+      if (!filteredStudentIdSet.has(r.student_id)) return false;
+      if (!q) return true;
+      const name = (studentNameMap[r.student_id] ?? '').toLowerCase();
+      return name.includes(q) || r.title.toLowerCase().includes(q);
+    });
+  }, [progressNotes, filteredStudentIdSet, noteQuery, studentNameMap]);
+
+  const displayedUpdates = useMemo(() => {
+    const q = updateQuery.trim().toLowerCase();
+    return q ? updates.filter((r) => r.title.toLowerCase().includes(q)) : updates;
+  }, [updates, updateQuery]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -203,6 +244,13 @@ export function StaffAcademicsPage() {
       {message || loadMessage ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
+
+      <ClassSelector
+        classes={availableClasses}
+        counts={studentCounts}
+        onChange={setSelectedClassId}
+        selectedClassId={selectedClassId}
+      />
 
       <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard title="Upload worksheet" description="Add a worksheet or activity file for your class.">
@@ -265,7 +313,7 @@ export function StaffAcademicsPage() {
           <form className="grid gap-4" onSubmit={saveProgressNote}>
             <select className="form-input" required onChange={(event) => setNoteForm((current) => ({ ...current, student_id: event.target.value }))} value={noteForm.student_id}>
               <option value="">Select student</option>
-              {students.map((student) => (
+              {filteredStudents.map((student) => (
                 <option key={student.id} value={student.id}>
                   {formatStudentOption(student)}
                 </option>
@@ -305,56 +353,86 @@ export function StaffAcademicsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard title="Recent worksheets and tasks" description="Latest academic assets you can revisit.">
           <div className="space-y-6">
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Worksheet', render: (row) => <span className="font-bold">{row.title}</span> },
-                { key: 'uploaded', label: 'Uploaded', render: (row) => formatDate(row.uploaded_at) },
-                { key: 'file', label: 'File', render: (row) => row.file_url },
-              ]}
-              emptyMessage="No worksheets uploaded."
-              rows={worksheets}
-            />
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Task', render: (row) => <span className="font-bold">{row.title}</span> },
-                { key: 'due', label: 'Due date', render: (row) => formatDate(row.due_date) },
-                { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              ]}
-              emptyMessage="No homework tasks assigned."
-              rows={tasks}
-            />
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="form-input pl-11" onChange={(event) => setWorksheetQuery(event.target.value)} placeholder="Search worksheets" value={worksheetQuery} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: 'title', label: 'Worksheet', render: (row) => <span className="font-bold">{row.title}</span> },
+                  { key: 'uploaded', label: 'Uploaded', render: (row) => formatDate(row.uploaded_at) },
+                  { key: 'file', label: 'File', render: (row) => row.file_url },
+                ]}
+                emptyMessage="No worksheets uploaded."
+                rows={displayedWorksheets}
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="form-input pl-11" onChange={(event) => setTaskQuery(event.target.value)} placeholder="Search tasks" value={taskQuery} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: 'title', label: 'Task', render: (row) => <span className="font-bold">{row.title}</span> },
+                  { key: 'due', label: 'Due date', render: (row) => formatDate(row.due_date) },
+                  { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
+                ]}
+                emptyMessage="No homework tasks assigned."
+                rows={displayedTasks}
+              />
+            </div>
           </div>
         </SectionCard>
 
         <SectionCard title="Lessons, progress and updates" description="Recent summaries and child-specific progress notes.">
           <div className="space-y-6">
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Lesson', render: (row) => <span className="font-bold">{row.title}</span> },
-                { key: 'date', label: 'Date', render: (row) => formatDate(row.lesson_date) },
-                { key: 'objective', label: 'Objective', render: (row) => row.objective ?? '-' },
-              ]}
-              emptyMessage="No lesson summaries."
-              rows={lessonPlans}
-            />
-            <DataTable
-              columns={[
-                { key: 'student', label: 'Student', render: (row) => studentNameMap[row.student_id] ?? 'Unknown student' },
-                { key: 'title', label: 'Note', render: (row) => row.title },
-                { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.note_type} /> },
-                { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
-              ]}
-              emptyMessage="No progress notes yet."
-              rows={progressNotes}
-            />
-            <DataTable
-              columns={[
-                { key: 'title', label: 'Class update', render: (row) => row.title },
-                { key: 'published', label: 'Published', render: (row) => formatDate(row.published_at) },
-              ]}
-              emptyMessage="No class updates published."
-              rows={updates}
-            />
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="form-input pl-11" onChange={(event) => setLessonQuery(event.target.value)} placeholder="Search lesson plans" value={lessonQuery} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: 'title', label: 'Lesson', render: (row) => <span className="font-bold">{row.title}</span> },
+                  { key: 'date', label: 'Date', render: (row) => formatDate(row.lesson_date) },
+                  { key: 'objective', label: 'Objective', render: (row) => row.objective ?? '-' },
+                ]}
+                emptyMessage="No lesson summaries."
+                rows={displayedLessonPlans}
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="form-input pl-11" onChange={(event) => setNoteQuery(event.target.value)} placeholder="Search progress notes" value={noteQuery} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: 'student', label: 'Student', render: (row) => studentNameMap[row.student_id] ?? 'Unknown student' },
+                  { key: 'title', label: 'Note', render: (row) => row.title },
+                  { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.note_type} /> },
+                  { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
+                ]}
+                emptyMessage="No progress notes yet."
+                rows={displayedProgressNotes}
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="form-input pl-11" onChange={(event) => setUpdateQuery(event.target.value)} placeholder="Search class updates" value={updateQuery} />
+              </div>
+              <DataTable
+                columns={[
+                  { key: 'title', label: 'Class update', render: (row) => row.title },
+                  { key: 'published', label: 'Published', render: (row) => formatDate(row.published_at) },
+                ]}
+                emptyMessage="No class updates published."
+                rows={displayedUpdates}
+              />
+            </div>
           </div>
         </SectionCard>
       </div>
