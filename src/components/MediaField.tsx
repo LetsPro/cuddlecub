@@ -9,6 +9,7 @@ interface MediaFieldProps {
   onChange: (value: string) => void;
   helperText?: string;
   previewHeightClassName?: string;
+  allowVideos?: boolean;
 }
 
 export function MediaField({
@@ -17,6 +18,7 @@ export function MediaField({
   onChange,
   helperText,
   previewHeightClassName = 'h-44',
+  allowVideos = false,
 }: MediaFieldProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -24,6 +26,8 @@ export function MediaField({
     onChange(asset.public_url);
     setPickerOpen(false);
   }
+
+  const isVideo = allowVideos && /\.(mp4|mov|m4v|webm|ogg)(\?.*)?$/i.test(value);
 
   return (
     <>
@@ -38,7 +42,11 @@ export function MediaField({
         <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white">
           <div className={`${previewHeightClassName} flex items-center justify-center bg-slate-50`}>
             {value ? (
-              <img alt={label} className="h-full w-full object-cover" decoding="async" loading="lazy" src={value} />
+              isVideo ? (
+                <video className="h-full w-full object-cover" controls preload="metadata" src={value} />
+              ) : (
+                <img alt={label} className="h-full w-full object-cover" decoding="async" loading="lazy" src={value} />
+              )
             ) : (
               <div className="flex flex-col items-center gap-3 px-4 text-center text-sm text-slate-400">
                 <ImagePlus className="h-6 w-6" />
@@ -61,7 +69,7 @@ export function MediaField({
         </div>
       </div>
 
-      <MediaPickerModal onClose={() => setPickerOpen(false)} onSelect={handleSelect} open={pickerOpen} selectedUrl={value} />
+      <MediaPickerModal allowVideos={allowVideos} onClose={() => setPickerOpen(false)} onSelect={handleSelect} open={pickerOpen} selectedUrl={value} />
     </>
   );
 }

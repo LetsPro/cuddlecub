@@ -10,7 +10,7 @@ import { useAppContext } from '../../lib/app-context';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { ToastMessage } from '../../lib/toast';
 import { formatCurrency, formatDate } from '../../lib/utils';
-import type { AcademicYear, FeeStructure, SchoolClass, Section } from '../../types/app';
+import type { AcademicYear, FeeStructure, SchoolClass } from '../../types/app';
 
 interface HolidayRecord {
   id: string;
@@ -102,7 +102,6 @@ export function SchoolSetupPage() {
   const { school, refreshSchool } = useAppContext();
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [sections, setSections] = useState<Section[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -122,9 +121,6 @@ export function SchoolSetupPage() {
     name: '',
     age_group: '',
     capacity: '',
-    section_name: '',
-    room_label: '',
-    section_capacity: '',
   });
   const [feeForm, setFeeForm] = useState({
     name: '',
@@ -137,15 +133,6 @@ export function SchoolSetupPage() {
     holiday_date: '',
     holiday_type: 'holiday',
   });
-
-  const classRows = useMemo(
-    () =>
-      classes.map((item) => ({
-        ...item,
-        section_count: sections.filter((section) => section.class_id === item.id).length,
-      })),
-    [classes, sections],
-  );
 
   const activeAcademicYear = useMemo(
     () => academicYears.find((item) => item.is_active) ?? null,
@@ -165,7 +152,7 @@ export function SchoolSetupPage() {
       {
         label: 'Classes',
         value: String(classes.length),
-        detail: sections.length ? `${sections.length} sections configured` : 'No sections configured yet',
+        detail: classes.length ? 'Classrooms configured for enrollment' : 'No classes configured yet',
         icon: GraduationCap,
       },
       {
@@ -181,7 +168,7 @@ export function SchoolSetupPage() {
         icon: CalendarDays,
       },
     ],
-    [activeAcademicYear, classes.length, feeStructures.length, holidays.length, school.academic_year_label, sections.length],
+    [activeAcademicYear, classes.length, feeStructures.length, holidays.length, school.academic_year_label],
   );
 
   useEffect(() => {
@@ -192,17 +179,15 @@ export function SchoolSetupPage() {
     setMessage(null);
 
     try {
-      const [academicYearResponse, classResponse, sectionResponse, feeResponse, holidayResponse] = await Promise.all([
+      const [academicYearResponse, classResponse, feeResponse, holidayResponse] = await Promise.all([
         supabase.from('academic_years').select('*').eq('school_id', school.id).order('start_date', { ascending: false }),
         supabase.from('classes').select('*').eq('school_id', school.id).order('name'),
-        supabase.from('sections').select('*').eq('school_id', school.id).order('name'),
         supabase.from('fee_structures').select('*').eq('school_id', school.id).order('created_at', { ascending: false }),
         supabase.from('school_holidays').select('*').eq('school_id', school.id).order('holiday_date'),
       ]);
 
       setAcademicYears((academicYearResponse.data ?? []) as AcademicYear[]);
       setClasses((classResponse.data ?? []) as SchoolClass[]);
-      setSections((sectionResponse.data ?? []) as Section[]);
       setFeeStructures((feeResponse.data ?? []) as FeeStructure[]);
       setHolidays((holidayResponse.data ?? []) as HolidayRecord[]);
     } catch (error) {
@@ -239,9 +224,6 @@ export function SchoolSetupPage() {
       name: '',
       age_group: '',
       capacity: '',
-      section_name: '',
-      room_label: '',
-      section_capacity: '',
     });
     setSetupModal(null);
   }
@@ -252,9 +234,6 @@ export function SchoolSetupPage() {
       name: '',
       age_group: '',
       capacity: '',
-      section_name: '',
-      room_label: '',
-      section_capacity: '',
     });
     setSetupModal('class');
   }
@@ -265,9 +244,6 @@ export function SchoolSetupPage() {
       name: classRow.name,
       age_group: classRow.age_group ?? '',
       capacity: classRow.capacity ? String(classRow.capacity) : '',
-      section_name: '',
-      room_label: '',
-      section_capacity: '',
     });
     setSetupModal('class');
   }
@@ -366,34 +342,20 @@ export function SchoolSetupPage() {
         return;
       }
 
-      const { data: createdClass, error: classError } = await supabase
+      const { error: classError } = await supabase
         .from('classes')
         .insert({
           school_id: school.id,
           name: classForm.name,
           age_group: classForm.age_group || null,
           capacity: classForm.capacity ? Number(classForm.capacity) : null,
-        })
-        .select('id')
-        .single();
+        });
 
       if (classError) throw classError;
 
-      if (classForm.section_name) {
-        const { error: sectionError } = await supabase.from('sections').insert({
-          school_id: school.id,
-          class_id: createdClass.id,
-          name: classForm.section_name,
-          room_label: classForm.room_label || null,
-          capacity: classForm.section_capacity ? Number(classForm.section_capacity) : null,
-        });
-
-        if (sectionError) throw sectionError;
-      }
-
       resetClassForm();
       await loadSetup();
-      setMessage('Class and optional section created.');
+      setMessage('Class created.');
     } catch (error) {
       setMessage(getErrorMessage(error));
     }
@@ -506,7 +468,7 @@ export function SchoolSetupPage() {
   }
 
   async function handleDeleteClass(classRow: SchoolClass) {
-    const confirmed = window.confirm(`Delete class ${classRow.name}? This will also remove its sections.`);
+    const confirmed = window.confirm(`Delete class ${classRow.name}?`);
 
     if (!confirmed) return;
 
@@ -589,10 +551,10 @@ export function SchoolSetupPage() {
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <SectionCard
           title="Class directory"
-          description="A quick overview of all configured classes, age groups, capacities, and section counts."
+          description="A quick overview of all configured classes, age groups, and capacities."
           action={
             <div className="flex flex-wrap justify-end gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{classRows.length} classes</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{classes.length} classes</span>
               <button className="button-primary gap-2 px-3 py-2 text-xs" onClick={openCreateClass} type="button">
                 <Plus className="h-3.5 w-3.5" />
                 Add class
@@ -605,7 +567,6 @@ export function SchoolSetupPage() {
               { key: 'name', label: 'Class', render: (row) => <span className="font-bold">{row.name}</span> },
               { key: 'age_group', label: 'Age group', render: (row) => row.age_group ?? 'Not set' },
               { key: 'capacity', label: 'Capacity', render: (row) => row.capacity ?? 'Not set' },
-              { key: 'sections', label: 'Sections', render: (row) => row.section_count ?? 0 },
               {
                 key: 'action',
                 label: 'Action',
@@ -624,7 +585,7 @@ export function SchoolSetupPage() {
               },
             ]}
             emptyMessage="No classes added yet."
-            rows={classRows}
+            rows={classes}
           />
         </SectionCard>
 
@@ -793,7 +754,7 @@ export function SchoolSetupPage() {
       </Modal>
 
       <Modal
-        description={editingClassId ? 'Update class name, age group, and capacity.' : 'Create a class and optionally add its first section.'}
+        description="Create or update class name, age group, and capacity."
         onClose={resetClassForm}
         open={setupModal === 'class'}
         title={editingClassId ? 'Edit class' : 'Add class'}
@@ -811,22 +772,6 @@ export function SchoolSetupPage() {
             <label className="form-label">Class capacity</label>
             <input className="form-input" onChange={(event) => setClassForm((current) => ({ ...current, capacity: event.target.value }))} type="number" value={classForm.capacity} />
           </div>
-          {!editingClassId ? (
-            <>
-              <div>
-                <label className="form-label">Section name</label>
-                <input className="form-input" onChange={(event) => setClassForm((current) => ({ ...current, section_name: event.target.value }))} placeholder="A" value={classForm.section_name} />
-              </div>
-              <div>
-                <label className="form-label">Room label</label>
-                <input className="form-input" onChange={(event) => setClassForm((current) => ({ ...current, room_label: event.target.value }))} placeholder="Room 101" value={classForm.room_label} />
-              </div>
-              <div>
-                <label className="form-label">Section capacity</label>
-                <input className="form-input" onChange={(event) => setClassForm((current) => ({ ...current, section_capacity: event.target.value }))} type="number" value={classForm.section_capacity} />
-              </div>
-            </>
-          ) : null}
           <div className="md:col-span-2 flex justify-end gap-3 pt-2">
             <button className="button-secondary" onClick={resetClassForm} type="button">
               Cancel

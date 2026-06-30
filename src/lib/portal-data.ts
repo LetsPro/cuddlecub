@@ -1,20 +1,27 @@
 import { supabase } from './supabase';
-import type { ParentRecord, StaffRecord, StudentRecord } from '../types/app';
+import type { ClassTeacherAssignment, ParentRecord, StaffRecord, StudentRecord } from '../types/app';
 
 export function staffHasPermission(staff: StaffRecord | null | undefined, permission: string) {
   return Boolean(staff?.permissions?.includes(permission) || staff?.permissions?.includes('all_students'));
 }
 
 export function formatStudentOption(student: StudentRecord) {
-  const placement = [student.class_name || 'Unassigned', student.section_name || 'No section'].join(' / ');
+  const placement = student.class_name || 'Unassigned';
   return `${student.first_name} ${student.last_name} - ${placement}`;
 }
 
 export async function fetchAssignedClassIdsForStaff(staff: StaffRecord, schoolId: string) {
-  const assignedClassIds = new Set<string>();
+  const { data: assignmentData, error: assignmentError } = await supabase
+    .from('class_teacher_assignments')
+    .select('class_id')
+    .eq('school_id', schoolId)
+    .eq('staff_id', staff.id);
 
-  if (staff.class_teacher_for) {
-    assignedClassIds.add(staff.class_teacher_for);
+  if (!assignmentError) {
+    const assignmentClassIds = ((assignmentData ?? []) as Pick<ClassTeacherAssignment, 'class_id'>[]).map((row) => row.class_id);
+    if (assignmentClassIds.length) {
+      return assignmentClassIds;
+    }
   }
 
   const { data, error } = await supabase
@@ -25,11 +32,17 @@ export async function fetchAssignedClassIdsForStaff(staff: StaffRecord, schoolId
 
   if (error) throw error;
 
-  ((data ?? []) as Array<{ id: string }>).forEach((row) => {
-    assignedClassIds.add(row.id);
-  });
+  const classAssignedIds = ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
 
-  return Array.from(assignedClassIds);
+  if (classAssignedIds.length) {
+    return classAssignedIds;
+  }
+
+  if (staff.assigned_class_ids?.length) {
+    return staff.assigned_class_ids;
+  }
+
+  return staff.class_teacher_for ? [staff.class_teacher_for] : [];
 }
 
 export async function fetchStudentsForStaff(staff: StaffRecord, schoolId: string) {
@@ -42,7 +55,7 @@ export async function fetchStudentsForStaff(staff: StaffRecord, schoolId: string
 
   let query = supabase
     .from('students')
-    .select('*, classes(name), sections(name)')
+    .select('*, classes(name)')
     .eq('school_id', schoolId)
     .eq('is_active', true)
     .order('first_name');
@@ -57,14 +70,13 @@ export async function fetchStudentsForStaff(staff: StaffRecord, schoolId: string
   return ((data ?? []) as Array<Record<string, any>>).map((row) => ({
     ...(row as StudentRecord),
     class_name: row.classes?.name ?? null,
-    section_name: row.sections?.name ?? null,
   }));
 }
 
 export async function fetchLinkedStudentsForParent(parent: ParentRecord, schoolId: string) {
   const { data, error } = await supabase
     .from('student_parents')
-    .select('students(*, classes(name), sections(name))')
+    .select('students(*, classes(name))')
     .eq('school_id', schoolId)
     .eq('parent_id', parent.id);
 
@@ -76,7 +88,6 @@ export async function fetchLinkedStudentsForParent(parent: ParentRecord, schoolI
     .map((row) => ({
       ...(row as StudentRecord),
       class_name: row.classes?.name ?? null,
-      section_name: row.sections?.name ?? null,
     })) as StudentRecord[];
 }
 

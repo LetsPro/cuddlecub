@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppContext } from './app-context';
-import { fetchLinkedStudentsForParent, fetchStudentsForStaff } from './portal-data';
+import { fetchAssignedClassIdsForStaff, fetchLinkedStudentsForParent, fetchStudentsForStaff } from './portal-data';
 import { getCurrentParentRecord, getCurrentStaffRecord } from './portal';
 import { getErrorMessage } from './supabase';
 import type { ParentRecord, StaffRecord, StudentRecord } from '../types/app';
@@ -18,12 +18,15 @@ export function useStaffPortal() {
 
     try {
       const currentStaff = await getCurrentStaffRecord(session.user, school.id);
-      setStaffRecord(currentStaff);
 
       if (currentStaff) {
-        const assignedStudents = await fetchStudentsForStaff(currentStaff, school.id);
+        const assignedClassIds = await fetchAssignedClassIdsForStaff(currentStaff, school.id);
+        const nextStaffRecord = { ...currentStaff, assigned_class_ids: assignedClassIds };
+        setStaffRecord(nextStaffRecord);
+        const assignedStudents = await fetchStudentsForStaff(nextStaffRecord, school.id);
         setStudents(assignedStudents);
       } else {
+        setStaffRecord(null);
         setStudents([]);
       }
     } catch (error) {

@@ -127,6 +127,12 @@ async function uploadPreparedMediaAsset({
     data: { publicUrl },
   } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(storagePath);
 
+  const mediaType = preparedFile.type.startsWith('image/')
+    ? 'image'
+    : preparedFile.type.startsWith('video/')
+      ? 'video'
+      : 'file';
+
   const payload = {
     school_id: schoolId,
     storage_path: storagePath,
@@ -134,7 +140,7 @@ async function uploadPreparedMediaAsset({
     file_name: preparedFile.name,
     mime_type: preparedFile.type || null,
     file_size_bytes: preparedFile.size,
-    media_type: preparedFile.type.startsWith('image/') ? 'image' : 'file',
+    media_type: mediaType,
     label: label || deriveLabel(file.name),
     alt_text: altText || null,
     created_by: userId,

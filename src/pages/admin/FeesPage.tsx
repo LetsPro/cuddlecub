@@ -7,6 +7,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
+import { DEFAULT_LATE_PENALTY_PER_DAY, getInvoiceBalance, getInvoicePayableAmount, getLatePenaltyAmount, getLatePenaltyDays } from '../../lib/fees';
 import { openBrandedInvoicePdf } from '../../lib/invoices';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
@@ -20,6 +21,8 @@ const invoiceSeed = {
   total_amount: '',
   discount_amount: '0',
   amount_due: '',
+  penalty_enabled: false,
+  penalty_per_day: String(DEFAULT_LATE_PENALTY_PER_DAY),
   status: 'pending',
 };
 
@@ -290,11 +293,13 @@ export function FeesPage() {
   }
 
   function handlePaymentInvoiceChange(invoiceId: string) {
+    const invoice = invoices.find((item) => item.id === invoiceId);
+
     setPaymentForm((current) => ({
       ...current,
       fee_invoice_id: invoiceId,
       installment_label: '',
-      amount: '',
+      amount: invoice ? String(getInvoiceBalance(invoice)) : '',
     }));
   }
 
@@ -323,6 +328,8 @@ export function FeesPage() {
         due_date: invoiceForm.due_date,
         amount_due: Number(invoiceForm.amount_due),
         amount_paid: 0,
+        penalty_enabled: invoiceForm.penalty_enabled,
+        penalty_per_day: invoiceForm.penalty_enabled ? Number(invoiceForm.penalty_per_day || DEFAULT_LATE_PENALTY_PER_DAY) : DEFAULT_LATE_PENALTY_PER_DAY,
         status: invoiceForm.status,
       };
       const payloadWithInstallments = {
@@ -395,7 +402,7 @@ export function FeesPage() {
       if (error) throw error;
 
       const amountPaid = (invoice.amount_paid ?? 0) + paymentAmount;
-      const nextStatus = amountPaid >= invoice.amount_due ? 'paid' : 'partially_paid';
+      const nextStatus = amountPaid >= getInvoicePayableAmount(invoice) ? 'paid' : 'partially_paid';
 
       const { error: invoiceError } = await supabase
         .from('fee_invoices')
@@ -442,7 +449,7 @@ export function FeesPage() {
 
   const pendingAmount = invoices
     .filter((invoice) => invoice.status === 'pending' || invoice.status === 'partially_paid')
-    .reduce((sum, invoice) => sum + (invoice.amount_due - (invoice.amount_paid ?? 0)), 0);
+    .reduce((sum, invoice) => sum + getInvoiceBalance(invoice), 0);
 
   async function handleInvoicePdf(invoice: FeeInvoice) {
     try {
@@ -589,6 +596,28 @@ export function FeesPage() {
             <option value="partially_paid">Partially paid</option>
             <option value="paid">Paid</option>
           </select>
+        </div>
+        <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+          <label className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold text-slate-800">Late payment penalty</p>
+              <p className="text-xs text-slate-500">Apply a per-day penalty after the invoice due date.</p>
+            </div>
+            <input checked={invoiceForm.penalty_enabled} onChange={(event) => setInvoiceForm((current) => ({ ...current, penalty_enabled: event.target.checked }))} type="checkbox" />
+          </label>
+          {invoiceForm.penalty_enabled ? (
+            <div className="mt-4 max-w-xs">
+              <label className="form-label">Penalty per day</label>
+              <input
+                className="form-input"
+                min={0}
+                onChange={(event) => setInvoiceForm((current) => ({ ...current, penalty_per_day: event.target.value }))}
+                type="number"
+                value={invoiceForm.penalty_per_day}
+              />
+              <p className="mt-2 text-xs text-slate-500">Default is {formatCurrency(DEFAULT_LATE_PENALTY_PER_DAY)} per day.</p>
+            </div>
+          ) : null}
         </div>
         <div className="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4">
           <label className="flex items-center justify-between gap-4">
@@ -748,8 +777,17 @@ export function FeesPage() {
               { key: 'student', label: 'Student', render: (row) => studentLookup[row.student_id] ?? 'Unknown student' },
               { key: 'invoice', label: 'Invoice', render: (row) => row.invoice_number },
               { key: 'due', label: 'Due date', render: (row) => formatDate(row.due_date) },
-              { key: 'amount', label: 'Amount', render: (row) => formatCurrency(row.amount_due) },
+              { key: 'amount', label: 'Base amount', render: (row) => formatCurrency(row.amount_due) },
+              {
+                key: 'penalty',
+                label: 'Penalty',
+                render: (row) => {
+                  const penalty = getLatePenaltyAmount(row);
+                  return penalty ? `${formatCurrency(penalty)} (${getLatePenaltyDays(row)} days)` : '-';
+                },
+              },
               { key: 'paid', label: 'Paid', render: (row) => formatCurrency(row.amount_paid) },
+              { key: 'balance', label: 'Balance', render: (row) => formatCurrency(getInvoiceBalance(row)) },
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
               {
                 key: 'action',

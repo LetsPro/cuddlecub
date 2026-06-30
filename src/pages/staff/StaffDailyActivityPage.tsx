@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { ImagePlus, Search, Trash2 } from 'lucide-react';
 import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
-import { MediaField } from '../../components/MediaField';
+import { MediaPickerModal } from '../../components/MediaPickerModal';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -15,31 +15,44 @@ import type { DailyActivityRecord } from '../../types/app';
 
 const today = new Date().toISOString().slice(0, 10);
 
+function isVideoUrl(value: string) {
+  return /\.(mp4|mov|m4v|webm|ogg)(\?.*)?$/i.test(value);
+}
+
 export function StaffDailyActivityPage() {
   const { school } = useAppContext();
   const { staffRecord, students, message } = useStaffPortal();
   const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
-    useClassFilter(students, staffRecord?.class_teacher_for);
+    useClassFilter(students, staffRecord?.assigned_class_ids?.[0] ?? staffRecord?.class_teacher_for);
 
   const [logs, setLogs] = useState<DailyActivityRecord[]>([]);
   const [logsQuery, setLogsQuery] = useState('');
   const [form, setForm] = useState({
-    student_id: '',
+    student_ids: [] as string[],
     activity_date: today,
     activity_type: 'meal',
     summary: '',
     details: '',
     status: '',
-    image_url: '',
+    media_urls: [] as string[],
     shared_with_parent: true,
   });
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
 
   useEffect(() => {
     if (!students.length) return;
     void loadLogs();
   }, [students.map((student) => student.id).join('|')]);
+
+  useEffect(() => {
+    const availableStudentIds = new Set(filteredStudents.map((student) => student.id));
+    setForm((current) => ({
+      ...current,
+      student_ids: current.student_ids.filter((studentId) => availableStudentIds.has(studentId)),
+    }));
+  }, [filteredStudents.map((student) => student.id).join('|')]);
 
   async function loadLogs() {
     try {
@@ -62,25 +75,53 @@ export function StaffDailyActivityPage() {
     setSubmitMessage(null);
 
     try {
-      const { error } = await supabase.from('daily_activity_logs').insert({
-        school_id: school.id,
-        student_id: form.student_id,
-        activity_date: form.activity_date,
-        activity_type: form.activity_type,
-        summary: form.summary,
-        details: form.details || null,
-        status: form.status || null,
-        image_url: form.image_url || null,
-        shared_with_parent: form.shared_with_parent,
-      });
+      const mediaUrls = form.media_urls.length ? form.media_urls : [null];
+      const rows = form.student_ids.flatMap((studentId) =>
+        mediaUrls.map((mediaUrl) => ({
+          school_id: school.id,
+          student_id: studentId,
+          activity_date: form.activity_date,
+          activity_type: form.activity_type,
+          summary: form.summary,
+          details: form.details || null,
+          status: form.status || null,
+          image_url: mediaUrl,
+          shared_with_parent: form.shared_with_parent,
+        })),
+      );
+
+      const { error } = await supabase.from('daily_activity_logs').insert(rows);
 
       if (error) throw error;
-      setForm({ student_id: '', activity_date: today, activity_type: 'meal', summary: '', details: '', status: '', image_url: '', shared_with_parent: true });
+      setForm({ student_ids: [], activity_date: today, activity_type: 'meal', summary: '', details: '', status: '', media_urls: [], shared_with_parent: true });
       await loadLogs();
-      setSubmitMessage('Daily activity saved.');
+      setSubmitMessage(rows.length === 1 ? 'Daily update sent.' : `${rows.length} daily updates sent.`);
     } catch (error) {
       setSubmitMessage(getErrorMessage(error));
     }
+  }
+
+  function toggleStudent(studentId: string) {
+    setForm((current) => ({
+      ...current,
+      student_ids: current.student_ids.includes(studentId)
+        ? current.student_ids.filter((id) => id !== studentId)
+        : [...current.student_ids, studentId],
+    }));
+  }
+
+  function toggleAllFilteredStudents(checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      student_ids: checked ? filteredStudents.map((student) => student.id) : [],
+    }));
+  }
+
+  function removeMediaUrl(value: string) {
+    setForm((current) => ({
+      ...current,
+      media_urls: current.media_urls.filter((url) => url !== value),
+    }));
   }
 
   const filteredStudentIdSet = useMemo(() => new Set(filteredStudents.map((s) => s.id)), [filteredStudents]);
@@ -115,18 +156,31 @@ export function StaffDailyActivityPage() {
       />
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard title="Add daily update" description="Create a single activity log entry for a child.">
+        <SectionCard title="Add daily update" description="Send one care or learning update to selected students.">
           <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
             <div className="md:col-span-2">
-              <label className="form-label">Student</label>
-              <select className="form-input" required onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
-                <option value="">Select student</option>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="form-label mb-0">Students</label>
+                <label className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                  <input
+                    checked={filteredStudents.length > 0 && form.student_ids.length === filteredStudents.length}
+                    className="mr-2"
+                    onChange={(event) => toggleAllFilteredStudents(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Select all
+                </label>
+              </div>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2">
                 {filteredStudents.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {formatStudentOption(student)}
-                  </option>
+                  <label className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" key={student.id}>
+                    <input checked={form.student_ids.includes(student.id)} onChange={() => toggleStudent(student.id)} type="checkbox" />
+                    <span>{formatStudentOption(student)}</span>
+                  </label>
                 ))}
-              </select>
+                {!filteredStudents.length ? <p className="px-3 py-4 text-sm text-slate-500">No students found for this class.</p> : null}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{form.student_ids.length} selected</p>
             </div>
             <div>
               <label className="form-label">Date</label>
@@ -163,16 +217,46 @@ export function StaffDailyActivityPage() {
               Share with parent
             </label>
             <div className="md:col-span-2">
-              <MediaField
-                helperText="Optional classroom, meal, activity, or learning photo to share with the parent."
-                label="Activity image"
-                onChange={(value) => setForm((current) => ({ ...current, image_url: value }))}
-                previewHeightClassName="h-40"
-                value={form.image_url}
-              />
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <label className="form-label mb-0">Media</label>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Optional classroom, meal, activity, or learning photos and videos to share with parents.</p>
+                  </div>
+                  <button className="button-secondary gap-2" onClick={() => setMediaPickerOpen(true)} type="button">
+                    <ImagePlus className="h-4 w-4" />
+                    Add media
+                  </button>
+                </div>
+                {form.media_urls.length ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {form.media_urls.map((url) => (
+                      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white" key={url}>
+                        <div className="h-36 bg-slate-100">
+                          {isVideoUrl(url) ? (
+                            <video className="h-full w-full object-cover" controls preload="metadata" src={url} />
+                          ) : (
+                            <img alt="Selected daily update media" className="h-full w-full object-cover" decoding="async" loading="lazy" src={url} />
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-3 px-3 py-2">
+                          <span className="truncate text-xs font-semibold text-slate-500">{isVideoUrl(url) ? 'Video' : 'Photo'}</span>
+                          <button className="text-rose-600 transition hover:text-rose-700" onClick={() => removeMediaUrl(url)} type="button">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    No media selected
+                  </div>
+                )}
+              </div>
             </div>
             <div className="md:col-span-2">
-              <button className="button-primary" type="submit">Save update</button>
+              <button className="button-primary" disabled={!form.student_ids.length} type="submit">Send update</button>
             </div>
           </form>
         </SectionCard>
@@ -189,7 +273,7 @@ export function StaffDailyActivityPage() {
                 { key: 'date', label: 'Date', render: (row) => formatDate(row.activity_date) },
                 { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.activity_type} /> },
                 { key: 'summary', label: 'Summary', render: (row) => row.summary },
-                { key: 'image', label: 'Image', render: (row) => row.image_url ? <a className="font-bold theme-text-primary" href={row.image_url} rel="noreferrer" target="_blank">View image</a> : '-' },
+                { key: 'image', label: 'Media', render: (row) => row.image_url ? <a className="font-bold theme-text-primary" href={row.image_url} rel="noreferrer" target="_blank">View media</a> : '-' },
                 { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
               ]}
               emptyMessage="No daily activity entries yet."
@@ -198,6 +282,20 @@ export function StaffDailyActivityPage() {
           </div>
         </SectionCard>
       </div>
+
+      <MediaPickerModal
+        allowMultiple
+        allowVideos
+        description="Choose existing photos or videos, or upload new media for this daily update."
+        onClose={() => setMediaPickerOpen(false)}
+        onSelectMultiple={(assets) => {
+          setForm((current) => ({ ...current, media_urls: assets.map((asset) => asset.public_url) }));
+          setMediaPickerOpen(false);
+        }}
+        open={mediaPickerOpen}
+        selectedUrls={form.media_urls}
+        title="Select daily update media"
+      />
     </div>
   );
 }

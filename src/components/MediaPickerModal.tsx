@@ -17,6 +17,7 @@ interface MediaPickerModalProps {
   allowMultiple?: boolean;
   title?: string;
   description?: string;
+  allowVideos?: boolean;
 }
 
 export function MediaPickerModal({
@@ -29,6 +30,7 @@ export function MediaPickerModal({
   allowMultiple = false,
   title = 'Select media',
   description = 'Choose an existing image from the media library or upload a new one.',
+  allowVideos = false,
 }: MediaPickerModalProps) {
   const { profile, school } = useAppContext();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -40,6 +42,16 @@ export function MediaPickerModal({
   const [selectedAssets, setSelectedAssets] = useState<MediaAsset[]>([]);
   const isMultiple = allowMultiple || Boolean(onSelectMultiple);
   const canDelete = profile.role === 'admin';
+  const acceptedAssetLabel = allowVideos ? 'media' : 'image';
+  const acceptedAssetPlural = allowVideos ? 'media' : 'images';
+  const acceptedFileTypes = allowVideos ? 'image/*,video/*' : 'image/*';
+  const visibleAssets = assets.filter((asset) => {
+    if (allowVideos) {
+      return asset.media_type === 'image' || asset.media_type === 'video' || asset.mime_type?.startsWith('image/') || asset.mime_type?.startsWith('video/');
+    }
+
+    return asset.media_type === 'image' || asset.mime_type?.startsWith('image/');
+  });
 
   useEffect(() => {
     if (!open) {
@@ -97,7 +109,7 @@ export function MediaPickerModal({
 
           return nextAssets;
         });
-        setMessage(`${uploadedAssets.length} ${uploadedAssets.length === 1 ? 'image' : 'images'} uploaded.`);
+        setMessage(`${uploadedAssets.length} ${uploadedAssets.length === 1 ? acceptedAssetLabel : acceptedAssetPlural} uploaded.`);
       } else {
         const asset = await uploadMediaAsset({
           schoolId: school.id,
@@ -168,9 +180,15 @@ export function MediaPickerModal({
         <ToastMessage message={message} />
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4">
           <div>
-            <p className="text-sm font-semibold text-slate-900">Upload image</p>
+            <p className="text-sm font-semibold text-slate-900">Upload {acceptedAssetLabel}</p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              {isMultiple ? 'Upload or select one or more images at once.' : 'PNG, JPG, WEBP, and SVG files are supported.'}
+              {allowVideos
+                ? isMultiple
+                  ? 'Upload or select one or more photos or videos at once.'
+                  : 'Photos and videos are supported.'
+                : isMultiple
+                  ? 'Upload or select one or more images at once.'
+                  : 'PNG, JPG, WEBP, and SVG files are supported.'}
             </p>
           </div>
           <div className="flex gap-3">
@@ -179,9 +197,9 @@ export function MediaPickerModal({
             </button>
             <button className="button-primary gap-2" disabled={uploading} onClick={() => fileInputRef.current?.click()} type="button">
               {uploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              {uploading ? 'Uploading...' : isMultiple ? 'Upload images' : 'Upload image'}
+              {uploading ? 'Uploading...' : isMultiple ? `Upload ${acceptedAssetPlural}` : `Upload ${acceptedAssetLabel}`}
             </button>
-            <input accept="image/*" className="hidden" multiple={isMultiple} onChange={handleUpload} ref={fileInputRef} type="file" />
+            <input accept={acceptedFileTypes} className="hidden" multiple={isMultiple} onChange={handleUpload} ref={fileInputRef} type="file" />
           </div>
         </div>
         {loading ? (
@@ -197,13 +215,14 @@ export function MediaPickerModal({
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {assets.length === 0 ? (
+            {visibleAssets.length === 0 ? (
               <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3">
                 No media uploaded yet.
               </div>
             ) : (
-              assets.map((asset) => {
+              visibleAssets.map((asset) => {
                 const isSelected = isMultiple ? selectedAssets.some((item) => item.id === asset.id) : selectedUrl === asset.public_url;
+                const isVideo = asset.media_type === 'video' || asset.mime_type?.startsWith('video/');
 
                 return (
                   <article
@@ -212,13 +231,17 @@ export function MediaPickerModal({
                   >
                     <button className="block w-full text-left" onClick={() => handleAssetSelect(asset)} type="button">
                       <div className="h-44 bg-slate-100">
-                        <img
-                          alt={asset.alt_text || asset.label || asset.file_name}
-                          className="h-full w-full object-cover"
-                          decoding="async"
-                          loading="lazy"
-                          src={asset.public_url}
-                        />
+                        {isVideo ? (
+                          <video className="h-full w-full object-cover" muted playsInline preload="metadata" src={asset.public_url} />
+                        ) : (
+                          <img
+                            alt={asset.alt_text || asset.label || asset.file_name}
+                            className="h-full w-full object-cover"
+                            decoding="async"
+                            loading="lazy"
+                            src={asset.public_url}
+                          />
+                        )}
                       </div>
                       <div className="space-y-2 p-4">
                         <div className="flex items-center justify-between gap-3">
@@ -247,13 +270,13 @@ export function MediaPickerModal({
         )}
         {isMultiple ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
-            <p className="text-sm font-semibold text-slate-700">{selectedAssets.length} {selectedAssets.length === 1 ? 'image' : 'images'} selected</p>
+            <p className="text-sm font-semibold text-slate-700">{selectedAssets.length} {selectedAssets.length === 1 ? acceptedAssetLabel : acceptedAssetPlural} selected</p>
             <div className="flex gap-3">
               <button className="button-secondary" onClick={onClose} type="button">
                 Cancel
               </button>
               <button className="button-primary" disabled={!selectedAssets.length} onClick={() => void handleConfirmSelection()} type="button">
-                Use selected images
+                Use selected {acceptedAssetLabel}
               </button>
             </div>
           </div>

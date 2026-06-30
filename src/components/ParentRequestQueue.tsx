@@ -27,8 +27,10 @@ export function ParentRequestQueue({ studentIds, title = 'Parent requests', desc
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const studentScopeKey = studentIds ? studentIds.join('|') : 'all';
+
   useEffect(() => {
-    if (studentIds && !studentIds.length) {
+    if (profile.role !== 'admin' && studentIds && !studentIds.length) {
       setRequests([]);
       return undefined;
     }
@@ -41,13 +43,13 @@ export function ParentRequestQueue({ studentIds, title = 'Parent requests', desc
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [school.id, studentIds?.join('|')]);
+  }, [profile.role, school.id, studentScopeKey]);
 
   async function loadRequests() {
     setMessage(null);
     try {
       let query = supabase.from('parent_requests').select('*, students(first_name, last_name, class_id, section_id)').eq('school_id', school.id).order('created_at', { ascending: false }).limit(80);
-      if (studentIds) query = query.in('student_id', studentIds);
+      if (profile.role !== 'admin' && studentIds) query = query.in('student_id', studentIds);
       const { data, error } = await query;
       if (error) throw error;
       setRequests((data ?? []) as RequestWithStudent[]);

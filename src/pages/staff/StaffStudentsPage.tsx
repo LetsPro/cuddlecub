@@ -15,7 +15,7 @@ import { formatDate } from '../../lib/utils';
 export function StaffStudentsPage() {
   const { staffRecord, students, loading, message } = useStaffPortal();
   const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
-    useClassFilter(students, staffRecord?.class_teacher_for);
+    useClassFilter(students, staffRecord?.assigned_class_ids?.[0] ?? staffRecord?.class_teacher_for);
 
   const [query, setQuery] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function StaffStudentsPage() {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return filteredStudents;
     return filteredStudents.filter((s) =>
-      `${s.first_name} ${s.last_name} ${s.admission_number} ${s.class_name ?? ''} ${s.section_name ?? ''}`
+      `${s.first_name} ${s.last_name} ${s.admission_number} ${s.class_name ?? ''}`
         .toLowerCase()
         .includes(normalized),
     );
@@ -122,7 +122,7 @@ export function StaffStudentsPage() {
                   </button>
                 ),
               },
-              { key: 'class', label: 'Class', render: (row) => `${row.class_name ?? 'Unassigned'} · ${row.section_name ?? 'No section'}` },
+              { key: 'class', label: 'Class', render: (row) => row.class_name ?? 'Unassigned' },
               { key: 'dob', label: 'DOB', render: (row) => formatDate(row.dob) },
               { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.is_active ? 'active' : 'inactive'} /> },
             ]}
@@ -150,7 +150,7 @@ export function StaffStudentsPage() {
                 <p className="text-xl font-extrabold text-slate-900">{selectedStudent.first_name} {selectedStudent.last_name}</p>
                 <p className="mt-1 text-sm text-slate-500">Admission no. {selectedStudent.admission_number}</p>
                 <p className="mt-3 inline-flex rounded-full bg-brand-50 px-3 py-1 text-sm font-bold text-brand-700">
-                  {selectedStudent.class_name ?? 'Unassigned'} / {selectedStudent.section_name ?? 'No section'}
+                  {selectedStudent.class_name ?? 'Unassigned'}
                 </p>
               </div>
             </div>
@@ -158,7 +158,6 @@ export function StaffStudentsPage() {
               <Detail label="Date of birth" value={formatDate(selectedStudent.dob)} />
               <Detail label="Gender" value={selectedStudent.gender || 'Not recorded'} />
               <Detail label="Class assigned" value={selectedStudent.class_name ?? 'Unassigned'} />
-              <Detail label="Section" value={selectedStudent.section_name ?? 'No section'} />
               <Detail label="Emergency contact" value={canViewParents ? [selectedStudent.emergency_contact_name, selectedStudent.emergency_contact_phone].filter(Boolean).join(' · ') || 'Not recorded' : 'Not permitted'} />
               <Detail label="Parent contact" value={canViewParents ? parentContacts[selectedStudent.id]?.join(', ') || 'No linked parent contact found.' : 'Not permitted'} />
               <Detail label="Allergy details" value={canViewMedical ? selectedStudent.allergy_details || 'None recorded' : 'Not permitted'} />

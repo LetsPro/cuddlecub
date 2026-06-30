@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PencilLine, Plus, Trash2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable';
 import { Modal } from '../../components/Modal';
@@ -7,11 +7,10 @@ import { SectionCard } from '../../components/SectionCard';
 import { useAppContext } from '../../lib/app-context';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDateTime } from '../../lib/utils';
-import type { ClassroomUpdate, SchoolClass, Section, TimetableEntry } from '../../types/app';
+import type { ClassroomUpdate, SchoolClass, TimetableEntry } from '../../types/app';
 
 const timetableSeed = {
   class_id: '',
-  section_id: '',
   weekday: 'monday',
   start_time: '',
   end_time: '',
@@ -21,7 +20,6 @@ const timetableSeed = {
 
 const updateSeed = {
   class_id: '',
-  section_id: '',
   title: '',
   description: '',
 };
@@ -31,7 +29,6 @@ type AcademicsModal = 'timetable' | 'update';
 export function AcademicsPage() {
   const { school } = useAppContext();
   const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [sections, setSections] = useState<Section[]>([]);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
   const [classroomUpdates, setClassroomUpdates] = useState<ClassroomUpdate[]>([]);
   const [timetableForm, setTimetableForm] = useState(timetableSeed);
@@ -42,16 +39,6 @@ export function AcademicsPage() {
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const filteredSections = useMemo(
-    () => sections.filter((section) => !timetableForm.class_id || section.class_id === timetableForm.class_id),
-    [sections, timetableForm.class_id],
-  );
-
-  const updateSections = useMemo(
-    () => sections.filter((section) => !updateForm.class_id || section.class_id === updateForm.class_id),
-    [sections, updateForm.class_id],
-  );
-
   useEffect(() => {
     void loadAcademics();
   }, [school.id]);
@@ -60,20 +47,17 @@ export function AcademicsPage() {
     setMessage(null);
 
     try {
-      const [classResponse, sectionResponse, timetableResponse, updatesResponse] = await Promise.all([
+      const [classResponse, timetableResponse, updatesResponse] = await Promise.all([
         supabase.from('classes').select('*').eq('school_id', school.id).order('name'),
-        supabase.from('sections').select('*').eq('school_id', school.id).order('name'),
         supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time'),
         supabase.from('classroom_updates').select('*').eq('school_id', school.id).order('published_at', { ascending: false }),
       ]);
 
       if (classResponse.error) throw classResponse.error;
-      if (sectionResponse.error) throw sectionResponse.error;
       if (timetableResponse.error) throw timetableResponse.error;
       if (updatesResponse.error) throw updatesResponse.error;
 
       setClasses((classResponse.data ?? []) as SchoolClass[]);
-      setSections((sectionResponse.data ?? []) as Section[]);
       setTimetableEntries((timetableResponse.data ?? []) as TimetableEntry[]);
       setClassroomUpdates((updatesResponse.data ?? []) as ClassroomUpdate[]);
     } catch (error) {
@@ -91,7 +75,6 @@ export function AcademicsPage() {
     setEditingTimetableId(entry.id);
     setTimetableForm({
       class_id: entry.class_id,
-      section_id: entry.section_id ?? '',
       weekday: entry.weekday,
       start_time: entry.start_time,
       end_time: entry.end_time,
@@ -111,7 +94,6 @@ export function AcademicsPage() {
     setEditingUpdateId(update.id);
     setUpdateForm({
       class_id: update.class_id,
-      section_id: update.section_id ?? '',
       title: update.title,
       description: update.description ?? '',
     });
@@ -133,7 +115,7 @@ export function AcademicsPage() {
     const payload = {
       school_id: school.id,
       class_id: timetableForm.class_id,
-      section_id: timetableForm.section_id || null,
+      section_id: null,
       weekday: timetableForm.weekday,
       start_time: timetableForm.start_time,
       end_time: timetableForm.end_time,
@@ -165,7 +147,7 @@ export function AcademicsPage() {
     const payload = {
       school_id: school.id,
       class_id: updateForm.class_id,
-      section_id: updateForm.section_id || null,
+      section_id: null,
       title: updateForm.title,
       description: updateForm.description || null,
     };
@@ -241,11 +223,6 @@ export function AcademicsPage() {
     return accumulator;
   }, {});
 
-  const sectionLookup = sections.reduce<Record<string, string>>((accumulator, section) => {
-    accumulator[section.id] = section.name;
-    return accumulator;
-  }, {});
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -272,7 +249,6 @@ export function AcademicsPage() {
           <DataTable
             columns={[
               { key: 'class', label: 'Class', render: (row) => classLookup[row.class_id] ?? 'Unknown class' },
-              { key: 'section', label: 'Section', render: (row) => (row.section_id ? sectionLookup[row.section_id] ?? 'Unknown' : 'All sections') },
               { key: 'weekday', label: 'Day', render: (row) => row.weekday },
               { key: 'time', label: 'Time', render: (row) => `${row.start_time} - ${row.end_time}` },
               { key: 'title', label: 'Activity', render: (row) => row.title },
@@ -338,7 +314,7 @@ export function AcademicsPage() {
       </div>
 
       <Modal
-        description="Choose a class, section, weekday and activity timing."
+        description="Choose a class, weekday and activity timing."
         onClose={closeAcademicsModal}
         open={academicsModal === 'timetable'}
         title={editingTimetableId ? 'Edit timetable entry' : 'Add timetable entry'}
@@ -347,22 +323,11 @@ export function AcademicsPage() {
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleTimetableSubmit}>
           <div>
             <label className="form-label">Class</label>
-            <select className="form-input" onChange={(event) => setTimetableForm((current) => ({ ...current, class_id: event.target.value, section_id: '' }))} required value={timetableForm.class_id}>
+            <select className="form-input" onChange={(event) => setTimetableForm((current) => ({ ...current, class_id: event.target.value }))} required value={timetableForm.class_id}>
               <option value="">Select class</option>
               {classes.map((schoolClass) => (
                 <option key={schoolClass.id} value={schoolClass.id}>
                   {schoolClass.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Section</label>
-            <select className="form-input" onChange={(event) => setTimetableForm((current) => ({ ...current, section_id: event.target.value }))} value={timetableForm.section_id}>
-              <option value="">All sections</option>
-              {filteredSections.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {section.name}
                 </option>
               ))}
             </select>
@@ -406,7 +371,7 @@ export function AcademicsPage() {
       </Modal>
 
       <Modal
-        description="Publish or edit a classroom summary for a class or section."
+        description="Publish or edit a classroom summary for a class."
         onClose={closeAcademicsModal}
         open={academicsModal === 'update'}
         title={editingUpdateId ? 'Edit classroom update' : 'Add classroom update'}
@@ -415,22 +380,11 @@ export function AcademicsPage() {
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleUpdateSubmit}>
           <div>
             <label className="form-label">Class</label>
-            <select className="form-input" onChange={(event) => setUpdateForm((current) => ({ ...current, class_id: event.target.value, section_id: '' }))} required value={updateForm.class_id}>
+            <select className="form-input" onChange={(event) => setUpdateForm((current) => ({ ...current, class_id: event.target.value }))} required value={updateForm.class_id}>
               <option value="">Select class</option>
               {classes.map((schoolClass) => (
                 <option key={schoolClass.id} value={schoolClass.id}>
                   {schoolClass.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Section</label>
-            <select className="form-input" onChange={(event) => setUpdateForm((current) => ({ ...current, section_id: event.target.value }))} value={updateForm.section_id}>
-              <option value="">All sections</option>
-              {updateSections.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {section.name}
                 </option>
               ))}
             </select>
@@ -448,7 +402,7 @@ export function AcademicsPage() {
               Cancel
             </button>
             <button className="button-primary" type="submit">
-              {editingUpdateId ? 'Save update' : 'Add update'}
+              Send update
             </button>
           </div>
         </form>

@@ -10,7 +10,7 @@ import { useAppContext } from '../../lib/app-context';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { ToastMessage } from '../../lib/toast';
 import { formatDate, getInitials } from '../../lib/utils';
-import type { ParentRecord, SchoolClass, Section, StudentRecord } from '../../types/app';
+import type { ParentRecord, SchoolClass, StudentRecord } from '../../types/app';
 
 const emptyForm = {
   first_name: '',
@@ -19,7 +19,6 @@ const emptyForm = {
   dob: '',
   gender: 'female',
   class_id: '',
-  section_id: '',
   medical_notes: '',
   allergy_details: '',
   emergency_contact_name: '',
@@ -33,7 +32,6 @@ export function StudentsPage() {
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [parents, setParents] = useState<ParentRecord[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
-  const [sections, setSections] = useState<Section[]>([]);
   const [studentParents, setStudentParents] = useState<Record<string, string[]>>({});
   const [primaryParentMap, setPrimaryParentMap] = useState<Record<string, string>>({});
   const [form, setForm] = useState(emptyForm);
@@ -43,11 +41,6 @@ export function StudentsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
 
-  const filteredSections = useMemo(
-    () => sections.filter((section) => !form.class_id || section.class_id === form.class_id),
-    [form.class_id, sections],
-  );
-
   useEffect(() => {
     void loadStudents();
   }, [school.id]);
@@ -56,28 +49,25 @@ export function StudentsPage() {
     setMessage(null);
 
     try {
-      const [studentResponse, parentResponse, classResponse, sectionResponse, linkResponse] = await Promise.all([
+      const [studentResponse, parentResponse, classResponse, linkResponse] = await Promise.all([
         supabase
           .from('students')
-          .select('*, classes(name), sections(name)')
+          .select('*, classes(name)')
           .eq('school_id', school.id)
           .order('created_at', { ascending: false }),
         supabase.from('parents').select('*').eq('school_id', school.id).order('full_name'),
         supabase.from('classes').select('*').eq('school_id', school.id).order('name'),
-        supabase.from('sections').select('*').eq('school_id', school.id).order('name'),
         supabase.from('student_parents').select('student_id, parent_id, is_primary, parents(full_name)').eq('school_id', school.id),
       ]);
 
       if (studentResponse.error) throw studentResponse.error;
       if (parentResponse.error) throw parentResponse.error;
       if (classResponse.error) throw classResponse.error;
-      if (sectionResponse.error) throw sectionResponse.error;
       if (linkResponse.error) throw linkResponse.error;
 
       const studentRows = ((studentResponse.data ?? []) as Array<Record<string, any>>).map((row) => ({
         ...(row as StudentRecord),
         class_name: row.classes?.name ?? null,
-        section_name: row.sections?.name ?? null,
       }));
 
       const nextStudentParents: Record<string, string[]> = {};
@@ -103,7 +93,6 @@ export function StudentsPage() {
       setStudents(studentRows);
       setParents((parentResponse.data ?? []) as ParentRecord[]);
       setClasses((classResponse.data ?? []) as SchoolClass[]);
-      setSections((sectionResponse.data ?? []) as Section[]);
       setStudentParents(nextStudentParents);
       setPrimaryParentMap(nextPrimaryParentMap);
     } catch (error) {
@@ -128,7 +117,6 @@ export function StudentsPage() {
       dob: student.dob,
       gender: student.gender,
       class_id: student.class_id ?? '',
-      section_id: student.section_id ?? '',
       medical_notes: student.medical_notes ?? '',
       allergy_details: student.allergy_details ?? '',
       emergency_contact_name: student.emergency_contact_name ?? '',
@@ -161,7 +149,7 @@ export function StudentsPage() {
         dob: form.dob,
         gender: form.gender,
         class_id: form.class_id || null,
-        section_id: form.section_id || null,
+        section_id: null,
         medical_notes: form.medical_notes || null,
         allergy_details: form.allergy_details || null,
         emergency_contact_name: form.emergency_contact_name || null,
@@ -293,12 +281,7 @@ export function StudentsPage() {
             {
               key: 'class',
               label: 'Class',
-              render: (row) => (
-                <div>
-                  <p className="text-slate-700">{row.class_name ?? 'Unassigned'}</p>
-                  <p className="text-xs text-slate-500">{row.section_name ?? 'No section'}</p>
-                </div>
-              ),
+              render: (row) => row.class_name ?? 'Unassigned',
             },
             { key: 'dob', label: 'DOB', render: (row) => formatDate(row.dob) },
             {
@@ -387,22 +370,11 @@ export function StudentsPage() {
           </div>
           <div>
             <label className="form-label">Class</label>
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, class_id: event.target.value, section_id: '' }))} value={form.class_id}>
+            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, class_id: event.target.value }))} value={form.class_id}>
               <option value="">Select class</option>
               {classes.map((schoolClass) => (
                 <option key={schoolClass.id} value={schoolClass.id}>
                   {schoolClass.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Section</label>
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, section_id: event.target.value }))} value={form.section_id}>
-              <option value="">Select section</option>
-              {filteredSections.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {section.name}
                 </option>
               ))}
             </select>

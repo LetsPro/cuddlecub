@@ -3,6 +3,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
+import { filterVisibleNotifications } from '../../lib/notifications';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDateTime } from '../../lib/utils';
@@ -21,9 +22,9 @@ export function ParentCommunicationPage() {
   async function loadCommunication() {
     setLoadMessage(null);
     try {
-      const { data, error } = await supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(50);
+      const { data, error } = await supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(80);
       if (error) throw error;
-      setNotifications((data ?? []) as NotificationRecord[]);
+      setNotifications(filterVisibleNotifications((data ?? []) as NotificationRecord[], 50));
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
     }

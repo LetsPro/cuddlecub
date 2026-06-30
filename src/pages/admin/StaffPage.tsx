@@ -19,7 +19,7 @@ import { useAppContext } from '../../lib/app-context';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { ToastMessage } from '../../lib/toast';
 import { formatDateTime, getInitials } from '../../lib/utils';
-import type { SchoolClass, StaffRecord } from '../../types/app';
+import type { ClassTeacherAssignment, SchoolClass, StaffRecord } from '../../types/app';
 
 interface StaffForm {
   full_name: string;
@@ -42,6 +42,23 @@ const emptyForm: StaffForm = {
 };
 
 const teacherPermissions = ['parent_contact_view', 'medical_view'];
+
+function buildTeacherClassMap(classes: SchoolClass[], assignments: ClassTeacherAssignment[]) {
+  const nextMap = assignments.reduce<Record<string, string[]>>((accumulator, assignment) => {
+    accumulator[assignment.staff_id] = [...(accumulator[assignment.staff_id] ?? []), assignment.class_id];
+    return accumulator;
+  }, {});
+
+  classes.forEach((schoolClass) => {
+    if (!schoolClass.class_teacher_staff_id) return;
+    const currentClassIds = nextMap[schoolClass.class_teacher_staff_id] ?? [];
+    if (!currentClassIds.includes(schoolClass.id)) {
+      nextMap[schoolClass.class_teacher_staff_id] = [...currentClassIds, schoolClass.id];
+    }
+  });
+
+  return nextMap;
+}
 
 interface GeneratedCredential {
   teacherId: string;
@@ -111,13 +128,15 @@ export function StaffPage() {
 
       const nextStaff = (staffResponse.data ?? []) as StaffRecord[];
       const nextClasses = (classResponse.data ?? []) as SchoolClass[];
-      const nextTeacherClassMap = nextClasses.reduce<Record<string, string[]>>((accumulator, schoolClass) => {
-        if (schoolClass.class_teacher_staff_id) {
-          accumulator[schoolClass.class_teacher_staff_id] = [...(accumulator[schoolClass.class_teacher_staff_id] ?? []), schoolClass.id];
-        }
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from('class_teacher_assignments')
+        .select('*')
+        .eq('school_id', school.id);
 
-        return accumulator;
-      }, {});
+      const nextTeacherClassMap = buildTeacherClassMap(
+        nextClasses,
+        assignmentError ? [] : ((assignmentData ?? []) as ClassTeacherAssignment[]),
+      );
 
       setStaff(nextStaff);
       setClasses(nextClasses);
@@ -174,6 +193,31 @@ export function StaffPage() {
     setAccessTeacher(nextStaff.find((member) => member.id === teacherId) ?? null);
   }
 
+  async function syncLegacyClassPrimaryTeachers(classIds: string[]) {
+    const uniqueClassIds = Array.from(new Set(classIds.filter(Boolean)));
+
+    for (const classId of uniqueClassIds) {
+      const { data, error } = await supabase
+        .from('class_teacher_assignments')
+        .select('staff_id')
+        .eq('school_id', school.id)
+        .eq('class_id', classId)
+        .order('created_at')
+        .limit(1);
+
+      if (error) throw error;
+
+      const primaryTeacherId = ((data ?? []) as Pick<ClassTeacherAssignment, 'staff_id'>[])[0]?.staff_id ?? null;
+      const { error: updateError } = await supabase
+        .from('classes')
+        .update({ class_teacher_staff_id: primaryTeacherId })
+        .eq('school_id', school.id)
+        .eq('id', classId);
+
+      if (updateError) throw updateError;
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
@@ -209,13 +253,28 @@ export function StaffPage() {
       }
 
       if (staffId) {
-        const { error: clearError } = await supabase.from('classes').update({ class_teacher_staff_id: null }).eq('class_teacher_staff_id', staffId);
-        if (clearError) throw clearError;
-      }
+        const previousClassIds = teacherClassMap[staffId] ?? (currentTeacher?.class_teacher_for ? [currentTeacher.class_teacher_for] : []);
+        const affectedClassIds = [...previousClassIds, ...selectedClassIds];
 
-      if (selectedClassIds.length && staffId) {
-        const { error } = await supabase.from('classes').update({ class_teacher_staff_id: staffId }).in('id', selectedClassIds);
-        if (error) throw error;
+        const { error: deleteAssignmentError } = await supabase
+          .from('class_teacher_assignments')
+          .delete()
+          .eq('school_id', school.id)
+          .eq('staff_id', staffId);
+
+        if (deleteAssignmentError) throw deleteAssignmentError;
+
+        if (selectedClassIds.length) {
+          const assignmentRows = selectedClassIds.map((classId) => ({
+            school_id: school.id,
+            class_id: classId,
+            staff_id: staffId,
+          }));
+          const { error: insertAssignmentError } = await supabase.from('class_teacher_assignments').insert(assignmentRows);
+          if (insertAssignmentError) throw insertAssignmentError;
+        }
+
+        await syncLegacyClassPrimaryTeachers(affectedClassIds);
       }
 
       if (currentTeacher?.user_id) {

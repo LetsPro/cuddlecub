@@ -8,7 +8,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
-import { fetchAssignedClassIdsForStaff } from '../../lib/portal-data';
+import { filterVisibleNotifications } from '../../lib/notifications';
 import { useClassFilter, useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { daysUntil, formatDate, formatDateTime } from '../../lib/utils';
@@ -25,7 +25,7 @@ export function StaffDashboardPage() {
   const { school } = useAppContext();
   const { staffRecord, students, loading, message } = useStaffPortal();
   const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
-    useClassFilter(students, staffRecord?.class_teacher_for);
+    useClassFilter(students, staffRecord?.assigned_class_ids?.[0] ?? staffRecord?.class_teacher_for);
 
   const [attendedIds, setAttendedIds] = useState<string[]>([]);
   const [activeIds, setActiveIds] = useState<string[]>([]);
@@ -47,7 +47,7 @@ export function StaffDashboardPage() {
 
     try {
       const studentIdList = students.map((s) => s.id);
-      const assignedClassIds = await fetchAssignedClassIdsForStaff(staffRecord, school.id);
+      const assignedClassIds = staffRecord.assigned_class_ids ?? (staffRecord.class_teacher_for ? [staffRecord.class_teacher_for] : []);
       const timetableQuery = supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time').limit(10);
       const assignedTimetableQuery = assignedClassIds.length ? timetableQuery.in('class_id', assignedClassIds) : timetableQuery;
 
@@ -58,7 +58,7 @@ export function StaffDashboardPage() {
         studentIdList.length
           ? supabase.from('daily_activity_logs').select('student_id').in('student_id', studentIdList).eq('activity_date', today)
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(5),
+        supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(30),
         assignedTimetableQuery,
         studentIdList.length
           ? supabase.from('students').select('id, first_name, last_name, dob, class_id').in('id', studentIdList)
@@ -73,7 +73,7 @@ export function StaffDashboardPage() {
 
       setAttendedIds(((attendanceRes.data ?? []) as Array<{ student_id: string }>).map((r) => r.student_id));
       setActiveIds(((activityRes.data ?? []) as Array<{ student_id: string }>).map((r) => r.student_id));
-      setNotifications((notificationRes.data ?? []) as NotificationRecord[]);
+      setNotifications(filterVisibleNotifications((notificationRes.data ?? []) as NotificationRecord[], 5));
       setTimetableEntries((timetableRes.data ?? []) as TimetableEntry[]);
       setAllBirthdays(
         ((birthdayRes.data ?? []) as Array<{ id: string; first_name: string; last_name: string; dob: string; class_id: string | null }>).map(
@@ -153,20 +153,20 @@ export function StaffDashboardPage() {
         selectedClassId={selectedClassId}
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Users} label="Students in class" value={filteredStudents.length} meta="Selected class roster" />
         <StatCard icon={Bell} label="Attendance pending" tone="amber" value={pendingAttendance} meta="Still to mark today" />
         <StatCard icon={BookOpenText} label="Activities pending" tone="teal" value={pendingActivities} meta="Students without updates" />
         <StatCard icon={Clock3} label="Timetable slots" tone="slate" value={filteredTimetable.length} meta="Class schedule items" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard title="Class roster" description="Students assigned to the selected class.">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             {filteredStudents.slice(0, 8).map((student) => (
-              <div key={student.id} className="rounded-2xl border border-slate-100 bg-white p-4">
+              <div key={student.id} className="rounded-xl border border-slate-100 bg-white p-4">
                 <p className="font-bold text-slate-900">{student.first_name} {student.last_name}</p>
-                <p className="mt-1 text-sm text-slate-500">{student.class_name ?? 'Unassigned'} · {student.section_name ?? 'No section'}</p>
+                <p className="mt-1 text-sm text-slate-500">{student.class_name ?? 'Unassigned'}</p>
                 <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-400">{student.admission_number}</p>
               </div>
             ))}
@@ -187,7 +187,7 @@ export function StaffDashboardPage() {
               <p className="text-sm text-slate-500">No birthdays found.</p>
             ) : (
               upcomingBirthdays.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                <div key={item.id} className="flex flex-col gap-2 rounded-xl bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-bold text-slate-900">{item.name}</p>
                     <p className="text-sm text-slate-500">{formatDate(item.dob)}</p>
@@ -203,7 +203,7 @@ export function StaffDashboardPage() {
         </SectionCard>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Notices from admin" description="Recent admin communication relevant to your school.">
           <div className="space-y-3">
             {notifications.length === 0 ? (

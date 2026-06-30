@@ -182,6 +182,15 @@ begin
   end if;
 end $$;
 
+create table if not exists public.class_teacher_assignments (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools (id) on delete cascade,
+  class_id uuid not null references public.classes (id) on delete cascade,
+  staff_id uuid not null references public.staff (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (class_id, staff_id)
+);
+
 create table if not exists public.inquiries (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools (id) on delete cascade,
@@ -355,6 +364,8 @@ create table if not exists public.fee_invoices (
   due_date date not null,
   amount_due numeric(12, 2) not null default 0,
   amount_paid numeric(12, 2) not null default 0,
+  penalty_enabled boolean not null default false,
+  penalty_per_day numeric(12, 2) not null default 250,
   status text not null default 'pending',
   receipt_number text,
   installment_plan jsonb,
@@ -398,6 +409,8 @@ create table if not exists public.notifications (
   status text not null default 'draft',
   scheduled_at timestamptz,
   sent_at timestamptz,
+  visible_from date,
+  visible_to date,
   delivery_meta jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -479,6 +492,8 @@ create index if not exists idx_profiles_school_id on public.profiles (school_id)
 create index if not exists idx_students_school_id on public.students (school_id);
 create index if not exists idx_parents_school_id on public.parents (school_id);
 create index if not exists idx_staff_school_id on public.staff (school_id);
+create index if not exists idx_class_teacher_assignments_staff on public.class_teacher_assignments (school_id, staff_id);
+create index if not exists idx_class_teacher_assignments_class on public.class_teacher_assignments (school_id, class_id);
 create index if not exists idx_inquiries_school_id on public.inquiries (school_id);
 create index if not exists idx_admissions_school_id on public.admissions (school_id);
 create index if not exists idx_student_attendance_school_date on public.student_attendance (school_id, attendance_date);
@@ -686,6 +701,7 @@ alter table public.parents enable row level security;
 alter table public.students enable row level security;
 alter table public.student_parents enable row level security;
 alter table public.staff enable row level security;
+alter table public.class_teacher_assignments enable row level security;
 alter table public.inquiries enable row level security;
 alter table public.admissions enable row level security;
 alter table public.admission_documents enable row level security;
@@ -1079,7 +1095,37 @@ as $$
      and st.is_active = true
     where s.id = target_student_id
       and (
-        st.class_teacher_for = s.class_id
+        exists (
+          select 1
+          from public.class_teacher_assignments cta
+          where cta.school_id = s.school_id
+            and cta.class_id = s.class_id
+            and cta.staff_id = st.id
+        )
+        or (
+          st.class_teacher_for = s.class_id
+          and not exists (
+            select 1
+            from public.class_teacher_assignments assigned
+            where assigned.school_id = st.school_id
+              and assigned.staff_id = st.id
+          )
+        )
+        or (
+          exists (
+            select 1
+            from public.classes c
+            where c.id = s.class_id
+              and c.school_id = s.school_id
+              and c.class_teacher_staff_id = st.id
+          )
+          and not exists (
+            select 1
+            from public.class_teacher_assignments assigned
+            where assigned.school_id = st.school_id
+              and assigned.staff_id = st.id
+          )
+        )
         or 'all_students' = any(st.permissions)
         or 'student_access' = any(st.permissions)
         or 'attendance_manage' = any(st.permissions)
@@ -1101,10 +1147,31 @@ as $$
     join public.parents p
       on p.id = sp.parent_id
      and p.user_id = auth.uid()
-     and p.is_active = true
+      and p.is_active = true
     where sp.student_id = target_student_id
   );
 $$;
+
+create or replace function public.can_parent_access_class(target_class_id uuid, target_section_id uuid default null)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.student_parents link
+    join public.students student
+      on student.id = link.student_id
+     and student.is_active = true
+    where link.parent_id = public.current_parent_record_id()
+      and student.class_id = target_class_id
+      and (target_section_id is null or student.section_id = target_section_id)
+  );
+$$;
+
+grant execute on function public.can_parent_access_class(uuid, uuid) to authenticated;
 
 create or replace function public.resolve_user_role()
 returns public.profiles
@@ -1221,6 +1288,24 @@ using (
   )
 );
 
+drop policy if exists class_teacher_assignments_school_members_select on public.class_teacher_assignments;
+create policy class_teacher_assignments_school_members_select on public.class_teacher_assignments
+for select to authenticated
+using (
+  school_id = public.current_school_id()
+  and (
+    public.is_school_admin(school_id)
+    or public.is_school_staff(school_id)
+    or public.is_school_parent(school_id)
+  )
+);
+
+drop policy if exists class_teacher_assignments_admin_manage on public.class_teacher_assignments;
+create policy class_teacher_assignments_admin_manage on public.class_teacher_assignments
+for all to authenticated
+using (public.is_school_admin(school_id))
+with check (public.is_school_admin(school_id));
+
 drop policy if exists sections_school_members_select on public.sections;
 create policy sections_school_members_select on public.sections
 for select to authenticated
@@ -1296,7 +1381,11 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.is_school_staff(school_id)
-  or public.is_school_parent(school_id)
+  or (
+    public.can_parent_access_class(class_id, section_id)
+    and (visible_from is null or visible_from <= current_date)
+    and (visible_to is null or visible_to >= current_date)
+  )
 );
 
 drop policy if exists timetable_entries_staff_manage on public.timetable_entries;
@@ -1310,7 +1399,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.is_school_staff(school_id)
-  or public.is_school_parent(school_id)
+  or public.can_parent_access_class(class_id, section_id)
 );
 
 drop policy if exists lesson_plans_staff_manage on public.lesson_plans;
@@ -1325,7 +1414,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.is_school_staff(school_id)
-  or public.is_school_parent(school_id)
+  or public.can_parent_access_class(class_id, section_id)
 );
 
 drop policy if exists worksheets_staff_manage on public.worksheets;
@@ -1340,7 +1429,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.is_school_staff(school_id)
-  or public.is_school_parent(school_id)
+  or public.can_parent_access_class(class_id, section_id)
 );
 
 drop policy if exists classroom_updates_staff_manage on public.classroom_updates;
@@ -1434,7 +1523,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.is_school_staff(school_id)
-  or public.is_school_parent(school_id)
+  or public.can_parent_access_class(class_id, section_id)
 );
 
 drop policy if exists content_posts_school_member_select on public.content_posts;
@@ -1487,7 +1576,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.is_school_staff(school_id)
-  or public.is_school_parent(school_id)
+  or public.can_parent_access_class(class_id, section_id)
 );
 
 drop policy if exists homework_tasks_staff_manage on public.homework_tasks;
@@ -1537,6 +1626,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or parent_id = public.current_parent_record_id()
+  or (student_id is not null and public.can_staff_access_student(student_id))
 );
 
 drop policy if exists parent_requests_parent_manage on public.parent_requests;
@@ -1549,6 +1639,18 @@ using (
 with check (
   public.is_school_admin(school_id)
   or parent_id = public.current_parent_record_id()
+);
+
+drop policy if exists parent_requests_school_update on public.parent_requests;
+create policy parent_requests_school_update on public.parent_requests
+for update to authenticated
+using (
+  public.is_school_admin(school_id)
+  or (student_id is not null and public.can_staff_access_student(student_id))
+)
+with check (
+  public.is_school_admin(school_id)
+  or (student_id is not null and public.can_staff_access_student(student_id))
 );
 
 

@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
+import { getInvoiceBalance, getLatePenaltyAmount, getLatePenaltyDays } from '../../lib/fees';
 import { openBrandedInvoicePdf } from '../../lib/invoices';
 import { buildStudentNameMap } from '../../lib/portal-data';
 import { useParentPortal } from '../../lib/portal-hooks';
@@ -67,7 +68,7 @@ export function ParentFeesPage() {
   const filteredInvoices = selectedStudentId ? invoices.filter((invoice) => invoice.student_id === selectedStudentId) : invoices;
   const filteredInvoiceIds = new Set(filteredInvoices.map((invoice) => invoice.id));
   const filteredPayments = payments.filter((payment) => filteredInvoiceIds.has(payment.fee_invoice_id));
-  const totalDue = filteredInvoices.reduce((sum, invoice) => sum + Math.max(invoice.amount_due - (invoice.amount_paid ?? 0), 0), 0);
+  const totalDue = filteredInvoices.reduce((sum, invoice) => sum + getInvoiceBalance(invoice), 0);
   const totalPaid = filteredInvoices.reduce((sum, invoice) => sum + (invoice.amount_paid ?? 0), 0);
 
   return (
@@ -99,7 +100,7 @@ export function ParentFeesPage() {
             {filteredInvoices.map((invoice) => (
               <article className="rounded-2xl border border-slate-100 bg-white p-4" key={invoice.id}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold text-slate-900">{invoice.invoice_number}</p><p className="mt-1 text-sm text-slate-500">Due {formatDate(invoice.due_date)}</p></div><StatusBadge value={invoice.status} /></div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4"><div><p className="text-xs font-semibold text-slate-400">Balance</p><p className="mt-1 font-extrabold text-slate-900">{formatCurrency(Math.max(invoice.amount_due - (invoice.amount_paid ?? 0), 0))}</p></div><button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => downloadInvoice(invoice)} type="button"><Download className="h-4 w-4" />Download PDF</button></div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4"><div><p className="text-xs font-semibold text-slate-400">Balance</p><p className="mt-1 font-extrabold text-slate-900">{formatCurrency(getInvoiceBalance(invoice))}</p>{getLatePenaltyAmount(invoice) ? <p className="mt-1 text-xs text-rose-600">Includes {formatCurrency(getLatePenaltyAmount(invoice))} late penalty for {getLatePenaltyDays(invoice)} day{getLatePenaltyDays(invoice) === 1 ? '' : 's'}.</p> : null}</div><button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => downloadInvoice(invoice)} type="button"><Download className="h-4 w-4" />Download PDF</button></div>
               </article>
             ))}
             {!filteredInvoices.length ? <p className="text-sm text-slate-500">No invoices found.</p> : null}

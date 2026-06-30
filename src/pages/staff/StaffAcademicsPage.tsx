@@ -17,7 +17,7 @@ export function StaffAcademicsPage() {
   const { school } = useAppContext();
   const { staffRecord, students, message } = useStaffPortal();
   const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
-    useClassFilter(students, staffRecord?.class_teacher_for);
+    useClassFilter(students, staffRecord?.assigned_class_ids?.[0] ?? staffRecord?.class_teacher_for);
   const [worksheets, setWorksheets] = useState<WorksheetRecord[]>([]);
   const [tasks, setTasks] = useState<HomeworkTask[]>([]);
   const [lessonPlans, setLessonPlans] = useState<LessonPlan[]>([]);
@@ -31,8 +31,7 @@ export function StaffAcademicsPage() {
   const [updateQuery, setUpdateQuery] = useState('');
 
   const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
-  const defaultClassId = staffRecord?.class_teacher_for || students[0]?.class_id || '';
-  const defaultSectionId = students[0]?.section_id || '';
+  const defaultClassId = staffRecord?.assigned_class_ids?.[0] ?? staffRecord?.class_teacher_for ?? students[0]?.class_id ?? '';
   const assignedClasses = useMemo(() => {
     const classMap = new Map<string, string>();
     students.forEach((student) => {
@@ -40,28 +39,19 @@ export function StaffAcademicsPage() {
     });
     return Array.from(classMap, ([id, name]) => ({ id, name }));
   }, [students]);
-  const assignedSections = useMemo(() => {
-    const sectionMap = new Map<string, { id: string; classId: string; name: string }>();
-    students.forEach((student) => {
-      if (student.section_id && student.class_id) {
-        sectionMap.set(student.section_id, { id: student.section_id, classId: student.class_id, name: student.section_name || 'Assigned section' });
-      }
-    });
-    return Array.from(sectionMap.values());
-  }, [students]);
 
-  const [worksheetForm, setWorksheetForm] = useState({ title: '', file_url: '', class_id: '', section_id: '' });
-  const [taskForm, setTaskForm] = useState({ title: '', description: '', due_date: '', class_id: '', section_id: '' });
-  const [lessonForm, setLessonForm] = useState({ title: '', objective: '', activity_details: '', lesson_date: '', class_id: '', section_id: '' });
+  const [worksheetForm, setWorksheetForm] = useState({ title: '', file_url: '', class_id: '' });
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', due_date: '', class_id: '' });
+  const [lessonForm, setLessonForm] = useState({ title: '', objective: '', activity_details: '', lesson_date: '', class_id: '' });
   const [noteForm, setNoteForm] = useState({ student_id: '', note_type: 'observation', title: '', summary: '', shared_with_parent: true });
-  const [updateForm, setUpdateForm] = useState({ title: '', description: '', class_id: '', section_id: '' });
+  const [updateForm, setUpdateForm] = useState({ title: '', description: '', class_id: '' });
 
   useEffect(() => {
-    setWorksheetForm((current) => ({ ...current, class_id: defaultClassId, section_id: defaultSectionId }));
-    setTaskForm((current) => ({ ...current, class_id: defaultClassId, section_id: defaultSectionId }));
-    setLessonForm((current) => ({ ...current, class_id: defaultClassId, section_id: defaultSectionId }));
-    setUpdateForm((current) => ({ ...current, class_id: defaultClassId, section_id: defaultSectionId }));
-  }, [defaultClassId, defaultSectionId]);
+    setWorksheetForm((current) => ({ ...current, class_id: defaultClassId }));
+    setTaskForm((current) => ({ ...current, class_id: defaultClassId }));
+    setLessonForm((current) => ({ ...current, class_id: defaultClassId }));
+    setUpdateForm((current) => ({ ...current, class_id: defaultClassId }));
+  }, [defaultClassId]);
 
   useEffect(() => {
     if (!defaultClassId && !students.length) return;
@@ -105,12 +95,12 @@ export function StaffAcademicsPage() {
       const { error } = await supabase.from('worksheets').insert({
         school_id: school.id,
         class_id: worksheetForm.class_id,
-        section_id: worksheetForm.section_id || null,
+        section_id: null,
         title: worksheetForm.title,
         file_url: worksheetForm.file_url,
       });
       if (error) throw error;
-      setWorksheetForm({ title: '', file_url: '', class_id: defaultClassId, section_id: defaultSectionId });
+      setWorksheetForm({ title: '', file_url: '', class_id: defaultClassId });
       await loadAcademicData();
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
@@ -124,7 +114,7 @@ export function StaffAcademicsPage() {
       const { error } = await supabase.from('homework_tasks').insert({
         school_id: school.id,
         class_id: taskForm.class_id,
-        section_id: taskForm.section_id || null,
+        section_id: null,
         created_by_staff_id: staffRecord?.id ?? null,
         title: taskForm.title,
         description: taskForm.description || null,
@@ -132,7 +122,7 @@ export function StaffAcademicsPage() {
         status: 'assigned',
       });
       if (error) throw error;
-      setTaskForm({ title: '', description: '', due_date: '', class_id: defaultClassId, section_id: defaultSectionId });
+      setTaskForm({ title: '', description: '', due_date: '', class_id: defaultClassId });
       await loadAcademicData();
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
@@ -146,14 +136,14 @@ export function StaffAcademicsPage() {
       const { error } = await supabase.from('lesson_plans').insert({
         school_id: school.id,
         class_id: lessonForm.class_id,
-        section_id: lessonForm.section_id || null,
+        section_id: null,
         lesson_date: lessonForm.lesson_date || new Date().toISOString().slice(0, 10),
         title: lessonForm.title,
         objective: lessonForm.objective || null,
         activity_details: lessonForm.activity_details || null,
       });
       if (error) throw error;
-      setLessonForm({ title: '', objective: '', activity_details: '', lesson_date: '', class_id: defaultClassId, section_id: defaultSectionId });
+      setLessonForm({ title: '', objective: '', activity_details: '', lesson_date: '', class_id: defaultClassId });
       await loadAcademicData();
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
@@ -188,13 +178,13 @@ export function StaffAcademicsPage() {
       const { error } = await supabase.from('classroom_updates').insert({
         school_id: school.id,
         class_id: updateForm.class_id,
-        section_id: updateForm.section_id || null,
+        section_id: null,
         title: updateForm.title,
         description: updateForm.description || null,
         published_at: new Date().toISOString(),
       });
       if (error) throw error;
-      setUpdateForm({ title: '', description: '', class_id: defaultClassId, section_id: defaultSectionId });
+      setUpdateForm({ title: '', description: '', class_id: defaultClassId });
       await loadAcademicData();
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
@@ -258,9 +248,7 @@ export function StaffAcademicsPage() {
             <PlacementFields
               classes={assignedClasses}
               classId={worksheetForm.class_id}
-              onChange={(classId, sectionId) => setWorksheetForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
-              sectionId={worksheetForm.section_id}
-              sections={assignedSections}
+              onChange={(classId) => setWorksheetForm((current) => ({ ...current, class_id: classId }))}
             />
             <input className="form-input" placeholder="Worksheet title" required onChange={(event) => setWorksheetForm((current) => ({ ...current, title: event.target.value }))} value={worksheetForm.title} />
             <MediaField
@@ -279,9 +267,7 @@ export function StaffAcademicsPage() {
             <PlacementFields
               classes={assignedClasses}
               classId={taskForm.class_id}
-              onChange={(classId, sectionId) => setTaskForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
-              sectionId={taskForm.section_id}
-              sections={assignedSections}
+              onChange={(classId) => setTaskForm((current) => ({ ...current, class_id: classId }))}
             />
             <input className="form-input" placeholder="Task title" required onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} value={taskForm.title} />
             <textarea className="form-input min-h-28" placeholder="Task description" onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} value={taskForm.description} />
@@ -297,9 +283,7 @@ export function StaffAcademicsPage() {
             <PlacementFields
               classes={assignedClasses}
               classId={lessonForm.class_id}
-              onChange={(classId, sectionId) => setLessonForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
-              sectionId={lessonForm.section_id}
-              sections={assignedSections}
+              onChange={(classId) => setLessonForm((current) => ({ ...current, class_id: classId }))}
             />
             <input className="form-input" placeholder="Lesson title" required onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} value={lessonForm.title} />
             <input className="form-input" placeholder="Objective" onChange={(event) => setLessonForm((current) => ({ ...current, objective: event.target.value }))} value={lessonForm.objective} />
@@ -340,9 +324,7 @@ export function StaffAcademicsPage() {
           <PlacementFields
             classes={assignedClasses}
             classId={updateForm.class_id}
-            onChange={(classId, sectionId) => setUpdateForm((current) => ({ ...current, class_id: classId, section_id: sectionId }))}
-            sectionId={updateForm.section_id}
-            sections={assignedSections}
+            onChange={(classId) => setUpdateForm((current) => ({ ...current, class_id: classId }))}
           />
           <input className="form-input" placeholder="Update title" required onChange={(event) => setUpdateForm((current) => ({ ...current, title: event.target.value }))} value={updateForm.title} />
           <input className="form-input" placeholder="Update description" onChange={(event) => setUpdateForm((current) => ({ ...current, description: event.target.value }))} value={updateForm.description} />
@@ -442,31 +424,18 @@ export function StaffAcademicsPage() {
 
 interface PlacementFieldsProps {
   classes: Array<{ id: string; name: string }>;
-  sections: Array<{ id: string; classId: string; name: string }>;
   classId: string;
-  sectionId: string;
-  onChange: (classId: string, sectionId: string) => void;
+  onChange: (classId: string) => void;
 }
 
-function PlacementFields({ classes, sections, classId, sectionId, onChange }: PlacementFieldsProps) {
-  const availableSections = sections.filter((section) => section.classId === classId);
-
+function PlacementFields({ classes, classId, onChange }: PlacementFieldsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div>
-        <label className="form-label">Assigned class</label>
-        <select className="form-input" onChange={(event) => onChange(event.target.value, '')} required value={classId}>
-          <option value="">Select class</option>
-          {classes.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="form-label">Section</label>
-        <select className="form-input" onChange={(event) => onChange(classId, event.target.value)} value={sectionId}>
-          <option value="">All sections</option>
-          {availableSections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
-        </select>
-      </div>
+    <div>
+      <label className="form-label">Assigned class</label>
+      <select className="form-input" onChange={(event) => onChange(event.target.value)} required value={classId}>
+        <option value="">Select class</option>
+        {classes.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}
+      </select>
     </div>
   );
 }

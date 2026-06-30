@@ -127,6 +127,14 @@ export interface SchoolClass {
   section_count?: number;
 }
 
+export interface ClassTeacherAssignment {
+  id?: string;
+  school_id: string;
+  class_id: string;
+  staff_id: string;
+  created_at?: string;
+}
+
 export interface Section {
   id: string;
   class_id: string;
@@ -166,6 +174,7 @@ export interface StaffRecord {
   is_active: boolean;
   permissions: string[] | null;
   class_teacher_for: string | null;
+  assigned_class_ids?: string[];
   dob?: string | null;
   access_status?: PortalAccessStatus | null;
   access_invited_at?: string | null;
@@ -325,6 +334,8 @@ export interface FeeInvoice {
   amount_due: number;
   amount_paid: number;
   status: string;
+  penalty_enabled?: boolean | null;
+  penalty_per_day?: number | null;
   receipt_number?: string | null;
   installment_plan?: Array<{ label: string; due_date: string; amount: number }> | null;
   created_at?: string;
@@ -349,6 +360,8 @@ export interface NotificationRecord {
   status: string;
   scheduled_at: string | null;
   sent_at: string | null;
+  visible_from: string | null;
+  visible_to: string | null;
   attachment_url: string | null;
 }
 

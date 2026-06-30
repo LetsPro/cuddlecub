@@ -29,8 +29,8 @@ export function WorkspaceSidebar({ navItems }: WorkspaceSidebarProps) {
   );
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-    groupedItems.reduce<Record<string, boolean>>((accumulator, group, index) => {
-      accumulator[group.group] = index === 0;
+    groupedItems.reduce<Record<string, boolean>>((accumulator, group) => {
+      accumulator[group.group] = true;
       return accumulator;
     }, {}),
   );
@@ -51,7 +51,7 @@ export function WorkspaceSidebar({ navItems }: WorkspaceSidebarProps) {
 
       groupedItems.forEach((group, index) => {
         if (typeof next[group.group] === 'undefined') {
-          next[group.group] = index === 0;
+          next[group.group] = true;
         }
       });
 

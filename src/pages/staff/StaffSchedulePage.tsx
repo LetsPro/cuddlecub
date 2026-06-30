@@ -5,7 +5,6 @@ import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { useAppContext } from '../../lib/app-context';
-import { fetchAssignedClassIdsForStaff } from '../../lib/portal-data';
 import { useStaffPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate, formatDateTime } from '../../lib/utils';
@@ -38,7 +37,7 @@ export function StaffSchedulePage() {
     setLoadMessage(null);
 
     try {
-      const assignedClassIds = staffRecord ? await fetchAssignedClassIdsForStaff(staffRecord, school.id) : [];
+      const assignedClassIds = staffRecord?.assigned_class_ids ?? (staffRecord?.class_teacher_for ? [staffRecord.class_teacher_for] : []);
       const timetableQuery = supabase.from('timetable_entries').select('*').eq('school_id', school.id).order('weekday').order('start_time');
       const assignedTimetableQuery = assignedClassIds.length ? timetableQuery.in('class_id', assignedClassIds) : timetableQuery;
       const [timetableResponse, eventResponse, holidayResponse] = await Promise.all([

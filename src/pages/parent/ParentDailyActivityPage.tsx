@@ -7,6 +7,10 @@ import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
 import type { DailyActivityRecord, StudentProgressNote } from '../../types/app';
 
+function isVideoUrl(value: string) {
+  return /\.(mp4|mov|m4v|webm|ogg)(\?.*)?$/i.test(value);
+}
+
 export function ParentDailyActivityPage() {
   const { students, message } = useParentPortal();
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -68,7 +72,13 @@ export function ParentDailyActivityPage() {
           <div className="space-y-4">
             {filteredActivities.map((activity) => (
               <article className="overflow-hidden rounded-2xl border border-slate-100 bg-white" key={activity.id}>
-                {activity.image_url ? <a className="block h-52 bg-slate-100" href={activity.image_url} rel="noreferrer" target="_blank"><img alt={activity.summary} className="h-full w-full object-cover" src={activity.image_url} /></a> : null}
+                {activity.image_url ? (
+                  isVideoUrl(activity.image_url) ? (
+                    <video className="block h-52 w-full bg-slate-100 object-cover" controls preload="metadata" src={activity.image_url} />
+                  ) : (
+                    <a className="block h-52 bg-slate-100" href={activity.image_url} rel="noreferrer" target="_blank"><img alt={activity.summary} className="h-full w-full object-cover" src={activity.image_url} /></a>
+                  )
+                ) : null}
                 <div className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><StatusBadge value={activity.activity_type} /><p className="text-xs font-semibold text-slate-400">{formatDate(activity.activity_date)}</p></div><p className="mt-3 font-bold text-slate-900">{activity.summary}</p>{activity.details ? <p className="mt-2 text-sm leading-6 text-slate-600">{activity.details}</p> : null}{activity.status ? <div className="mt-3"><StatusBadge value={activity.status} /></div> : null}</div>
               </article>
             ))}

@@ -18,7 +18,7 @@ export function StaffAttendancePage() {
   const { school } = useAppContext();
   const { staffRecord, students, message } = useStaffPortal();
   const { availableClasses, selectedClassId, setSelectedClassId, filteredStudents, studentCounts } =
-    useClassFilter(students, staffRecord?.class_teacher_for);
+    useClassFilter(students, staffRecord?.assigned_class_ids?.[0] ?? staffRecord?.class_teacher_for);
 
   const [attendance, setAttendance] = useState<StudentAttendanceRecord[]>([]);
   const [historyQuery, setHistoryQuery] = useState('');

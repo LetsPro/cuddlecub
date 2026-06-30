@@ -7,7 +7,9 @@ import { StatCard } from '../../components/StatCard';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ThemedLoader } from '../../components/ThemedLoader';
 import { useAppContext } from '../../lib/app-context';
+import { getInvoiceBalance } from '../../lib/fees';
 import { openBrandedInvoicePdf } from '../../lib/invoices';
+import { filterVisibleNotifications } from '../../lib/notifications';
 import { buildStudentNameMap } from '../../lib/portal-data';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
@@ -59,7 +61,7 @@ export function ParentDashboardPage() {
         supabase.from('student_attendance').select('student_id, status').in('student_id', studentIds).eq('attendance_date', today),
         supabase.from('daily_activity_logs').select('student_id, summary').in('student_id', studentIds).eq('activity_date', today),
         supabase.from('fee_invoices').select('*').in('student_id', studentIds).order('due_date', { ascending: true }).limit(10),
-        supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(6),
+        supabase.from('notifications').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(30),
         supabase.from('events').select('*').eq('school_id', school.id).gte('start_at', today).order('start_at').limit(5),
         supabase.from('content_posts').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(6),
       ]);
@@ -74,7 +76,7 @@ export function ParentDashboardPage() {
       setAttendance((attendanceResponse.data ?? []) as AttendanceRow[]);
       setActivities((activityResponse.data ?? []) as ActivityRow[]);
       setInvoices((invoiceResponse.data ?? []) as FeeInvoice[]);
-      setNotifications((notificationResponse.data ?? []) as NotificationRecord[]);
+      setNotifications(filterVisibleNotifications((notificationResponse.data ?? []) as NotificationRecord[], 6));
       setEvents((eventResponse.data ?? []) as EventRecord[]);
       setPosts((postResponse.data ?? []) as ContentPost[]);
     } catch (error) {
@@ -100,7 +102,7 @@ export function ParentDashboardPage() {
 
   const pendingAmount = invoices
     .filter((invoice) => invoice.status !== 'paid')
-    .reduce((sum, invoice) => sum + ((invoice.amount_due ?? 0) - (invoice.amount_paid ?? 0)), 0);
+    .reduce((sum, invoice) => sum + getInvoiceBalance(invoice), 0);
 
   function downloadInvoice(invoice: FeeInvoice) {
     if (!parentRecord) return;
@@ -138,7 +140,7 @@ export function ParentDashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Bell} label="Today's attendance" value={`${attendance.length}/${students.length}`} meta="Children marked today" />
         <StatCard icon={HeartPulse} label="Today's activity updates" tone="teal" value={activities.length} meta="Care and learning notes" />
         <StatCard icon={CreditCard} label="Pending fees" tone="amber" value={formatCurrency(pendingAmount)} meta="Outstanding amount" />
@@ -151,7 +153,7 @@ export function ParentDashboardPage() {
             <p className="text-sm text-slate-500">No invoices available.</p>
           ) : (
             invoices.slice(0, 5).map((invoice) => (
-              <div key={invoice.id} className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div key={invoice.id} className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-bold text-slate-900">{invoice.invoice_number}</p>
                   <p className="mt-1 text-sm text-slate-500">
@@ -159,7 +161,7 @@ export function ParentDashboardPage() {
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <StatusBadge value={invoice.status} />
-                    <span className="text-sm font-bold text-slate-700">{formatCurrency(invoice.amount_due - (invoice.amount_paid ?? 0))}</span>
+                    <span className="text-sm font-bold text-slate-700">{formatCurrency(getInvoiceBalance(invoice))}</span>
                   </div>
                 </div>
                 <button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => downloadInvoice(invoice)} type="button">
@@ -173,11 +175,11 @@ export function ParentDashboardPage() {
       </SectionCard>
 
       <SectionCard title="Child profile summary" description="Quick summary cards for linked children.">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {students.map((student) => (
-            <div key={student.id} className="rounded-2xl border border-slate-100 bg-white p-4">
+            <div key={student.id} className="rounded-xl border border-slate-100 bg-white p-4">
               <p className="font-bold text-slate-900">{student.first_name} {student.last_name}</p>
-              <p className="mt-1 text-sm text-slate-500">{student.class_name ?? 'Unassigned'} · {student.section_name ?? 'No section'}</p>
+              <p className="mt-1 text-sm text-slate-500">{student.class_name ?? 'Unassigned'}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <StatusBadge value={attendance.find((item) => item.student_id === student.id)?.status ?? 'pending'} />
                 <StatusBadge value={activities.find((item) => item.student_id === student.id) ? 'activity updated' : 'awaiting update'} />
@@ -187,7 +189,7 @@ export function ParentDashboardPage() {
         </div>
       </SectionCard>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Notices and reminders" description="Recent school communication sent to parents.">
           <div className="space-y-3">
             {notifications.length === 0 ? (

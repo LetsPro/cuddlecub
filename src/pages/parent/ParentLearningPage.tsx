@@ -6,7 +6,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { useParentPortal } from '../../lib/portal-hooks';
 import { getErrorMessage, supabase } from '../../lib/supabase';
 import { formatDate } from '../../lib/utils';
-import type { ClassroomUpdate, HomeworkTask, LessonPlan, TimetableEntry, WorksheetRecord } from '../../types/app';
+import type { ClassroomUpdate, HomeworkTask, LessonPlan, StudentProgressNote, TimetableEntry, WorksheetRecord } from '../../types/app';
 
 export function ParentLearningPage() {
   const { students, message } = useParentPortal();
@@ -15,6 +15,7 @@ export function ParentLearningPage() {
   const [tasks, setTasks] = useState<HomeworkTask[]>([]);
   const [lessons, setLessons] = useState<LessonPlan[]>([]);
   const [worksheets, setWorksheets] = useState<WorksheetRecord[]>([]);
+  const [progressNotes, setProgressNotes] = useState<StudentProgressNote[]>([]);
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
 
@@ -29,11 +30,15 @@ export function ParentLearningPage() {
   async function loadLearningData() {
     setLoadMessage(null);
     try {
-      const [updateResponse, taskResponse, lessonResponse, worksheetResponse, timetableResponse] = await Promise.all([
+      const studentIds = students.map((student) => student.id);
+      const [updateResponse, taskResponse, lessonResponse, worksheetResponse, progressNoteResponse, timetableResponse] = await Promise.all([
         supabase.from('classroom_updates').select('*').order('published_at', { ascending: false }).limit(60),
         supabase.from('homework_tasks').select('*').order('created_at', { ascending: false }).limit(60),
         supabase.from('lesson_plans').select('*').order('lesson_date', { ascending: false }).limit(60),
         supabase.from('worksheets').select('*').order('uploaded_at', { ascending: false }).limit(60),
+        studentIds.length
+          ? supabase.from('student_progress_notes').select('*').in('student_id', studentIds).eq('shared_with_parent', true).order('created_at', { ascending: false }).limit(80)
+          : Promise.resolve({ data: [], error: null }),
         supabase.from('timetable_entries').select('*').order('weekday').order('start_time').limit(80),
       ]);
 
@@ -41,26 +46,32 @@ export function ParentLearningPage() {
       if (taskResponse.error) throw taskResponse.error;
       if (lessonResponse.error) throw lessonResponse.error;
       if (worksheetResponse.error) throw worksheetResponse.error;
+      if (progressNoteResponse.error) throw progressNoteResponse.error;
       if (timetableResponse.error) throw timetableResponse.error;
 
       setUpdates((updateResponse.data ?? []) as ClassroomUpdate[]);
       setTasks((taskResponse.data ?? []) as HomeworkTask[]);
       setLessons((lessonResponse.data ?? []) as LessonPlan[]);
       setWorksheets((worksheetResponse.data ?? []) as WorksheetRecord[]);
+      setProgressNotes((progressNoteResponse.data ?? []) as StudentProgressNote[]);
       setTimetable((timetableResponse.data ?? []) as TimetableEntry[]);
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
     }
   }
 
-  const belongsToSelectedClass = (item: { class_id: string; section_id: string | null }) =>
-    Boolean(selectedStudent?.class_id && item.class_id === selectedStudent.class_id && (!item.section_id || item.section_id === selectedStudent.section_id));
+  const belongsToSelectedClass = (item: { class_id: string }) =>
+    Boolean(selectedStudent?.class_id && item.class_id === selectedStudent.class_id);
 
-  const visibleUpdates = useMemo(() => updates.filter(belongsToSelectedClass), [updates, selectedStudent?.class_id, selectedStudent?.section_id]);
-  const visibleTasks = useMemo(() => tasks.filter(belongsToSelectedClass), [tasks, selectedStudent?.class_id, selectedStudent?.section_id]);
-  const visibleLessons = useMemo(() => lessons.filter(belongsToSelectedClass), [lessons, selectedStudent?.class_id, selectedStudent?.section_id]);
-  const visibleWorksheets = useMemo(() => worksheets.filter(belongsToSelectedClass), [worksheets, selectedStudent?.class_id, selectedStudent?.section_id]);
-  const visibleTimetable = useMemo(() => timetable.filter(belongsToSelectedClass), [timetable, selectedStudent?.class_id, selectedStudent?.section_id]);
+  const visibleUpdates = useMemo(() => updates.filter(belongsToSelectedClass), [updates, selectedStudent?.class_id]);
+  const visibleTasks = useMemo(() => tasks.filter(belongsToSelectedClass), [tasks, selectedStudent?.class_id]);
+  const visibleLessons = useMemo(() => lessons.filter(belongsToSelectedClass), [lessons, selectedStudent?.class_id]);
+  const visibleWorksheets = useMemo(() => worksheets.filter(belongsToSelectedClass), [worksheets, selectedStudent?.class_id]);
+  const visibleProgressNotes = useMemo(
+    () => progressNotes.filter((item) => item.student_id === selectedStudent?.id),
+    [progressNotes, selectedStudent?.id],
+  );
+  const visibleTimetable = useMemo(() => timetable.filter(belongsToSelectedClass), [timetable, selectedStudent?.class_id]);
 
   return (
     <div className="space-y-6">
@@ -95,6 +106,20 @@ export function ParentLearningPage() {
           </SimpleList>
         </SectionCard>
       </div>
+
+      <SectionCard title="Progress notes" description="Teacher observations shared for this child.">
+        <SimpleList empty="No progress notes shared yet.">
+          {visibleProgressNotes.map((item) => (
+            <InfoCard
+              badge={item.note_type}
+              key={item.id}
+              meta={formatDate(item.created_at)}
+              text={item.summary}
+              title={item.title}
+            />
+          ))}
+        </SimpleList>
+      </SectionCard>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard title="Worksheets" description="Files shared for the class.">

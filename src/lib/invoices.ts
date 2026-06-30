@@ -1,5 +1,6 @@
 import { formatDate, getInitials } from './utils';
 import type { FeeInvoice, FeePayment, School } from '../types/app';
+import { getInvoiceBalance, getLatePenaltyAmount } from './fees';
 
 interface BrandedInvoicePdfOptions {
   school: School;
@@ -481,7 +482,8 @@ export async function openBrandedInvoicePdf({
   const grossFee = totalFee ?? invoice.amount_due;
   const paidAmount = invoice.amount_paid ?? 0;
   const discountAmount = Math.max(0, grossFee - invoice.amount_due);
-  const balanceAmount = Math.max(0, invoice.amount_due - paidAmount);
+  const latePenaltyAmount = getLatePenaltyAmount(invoice);
+  const balanceAmount = getInvoiceBalance(invoice);
   const invoicePayments = payments
     .filter((payment) => payment.fee_invoice_id === invoice.id)
     .sort((left, right) => left.payment_date.localeCompare(right.payment_date));
@@ -676,6 +678,10 @@ export async function openBrandedInvoicePdf({
   text(formatPdfCurrency(discountAmount), 318, 484, 11, 'F1');
   text('Fee to be paid:', 92, 456, 11, 'F2');
   text(formatPdfCurrency(invoice.amount_due), 318, 456, 11, 'F1');
+  if (latePenaltyAmount > 0) {
+    text('Late penalty:', 92, 438, 9.5, 'F2');
+    text(formatPdfCurrency(latePenaltyAmount), 318, 438, 9.5, 'F1');
+  }
 
   text('Installment schedule', 72, 416, 12, 'F2');
   const visibleInstallments = installments.slice(0, 5);
