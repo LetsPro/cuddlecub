@@ -27,7 +27,7 @@ export function MediaField({
     setPickerOpen(false);
   }
 
-  const isVideo = allowVideos && /\.(mp4|mov|m4v|webm|ogg)(\?.*)?$/i.test(value);
+  const isVideo = allowVideos && /\.(3g2|3gp|avi|m2ts|m4v|mkv|mov|mp4|mpeg|mpg|mts|ogv|ts|webm|wmv)(\?.*)?$/i.test(value);
 
   return (
     <>

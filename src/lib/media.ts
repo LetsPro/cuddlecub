@@ -29,6 +29,41 @@ function getFileExtension(file: File) {
   return matched?.[0]?.toLowerCase() ?? '';
 }
 
+const imageExtensions = new Set([
+  '.apng',
+  '.avif',
+  '.bmp',
+  '.gif',
+  '.heic',
+  '.heif',
+  '.ico',
+  '.jpeg',
+  '.jpg',
+  '.png',
+  '.svg',
+  '.tif',
+  '.tiff',
+  '.webp',
+]);
+
+const videoExtensions = new Set([
+  '.3g2',
+  '.3gp',
+  '.avi',
+  '.m2ts',
+  '.m4v',
+  '.mkv',
+  '.mov',
+  '.mp4',
+  '.mpeg',
+  '.mpg',
+  '.mts',
+  '.ogv',
+  '.ts',
+  '.webm',
+  '.wmv',
+]);
+
 function buildStoragePath(schoolId: string, file: File) {
   const today = new Date().toISOString().slice(0, 10);
   const extension = getFileExtension(file);
@@ -95,9 +130,25 @@ async function optimizeImageFile(file: File) {
     });
 
     return optimizedFile.size < file.size || scale < 1 ? optimizedFile : file;
+  } catch {
+    return file;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+function deriveMediaType(file: File) {
+  const extension = getFileExtension(file);
+
+  if (file.type.startsWith('image/') || imageExtensions.has(extension)) {
+    return 'image';
+  }
+
+  if (file.type.startsWith('video/') || videoExtensions.has(extension)) {
+    return 'video';
+  }
+
+  return 'file';
 }
 
 async function uploadPreparedMediaAsset({
@@ -127,12 +178,6 @@ async function uploadPreparedMediaAsset({
     data: { publicUrl },
   } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(storagePath);
 
-  const mediaType = preparedFile.type.startsWith('image/')
-    ? 'image'
-    : preparedFile.type.startsWith('video/')
-      ? 'video'
-      : 'file';
-
   const payload = {
     school_id: schoolId,
     storage_path: storagePath,
@@ -140,7 +185,7 @@ async function uploadPreparedMediaAsset({
     file_name: preparedFile.name,
     mime_type: preparedFile.type || null,
     file_size_bytes: preparedFile.size,
-    media_type: mediaType,
+    media_type: deriveMediaType(preparedFile),
     label: label || deriveLabel(file.name),
     alt_text: altText || null,
     created_by: userId,

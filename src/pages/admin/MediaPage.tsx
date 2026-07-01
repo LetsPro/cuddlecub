@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, LoaderCircle, PencilLine, Trash2 } from 'lucide-react';
+import { Eye, ImagePlus, LoaderCircle, PencilLine, Trash2 } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -23,6 +23,7 @@ export function MediaPage() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
   const [editForm, setEditForm] = useState(emptyEditForm);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
 
@@ -61,7 +62,7 @@ export function MediaPage() {
       });
 
       setAssets((current) => [...uploadedAssets, ...current]);
-      setMessage(`${uploadedAssets.length} ${uploadedAssets.length === 1 ? 'image' : 'images'} uploaded.`);
+      setMessage(`${uploadedAssets.length} ${uploadedAssets.length === 1 ? 'media file' : 'media files'} uploaded.`);
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -115,6 +116,9 @@ export function MediaPage() {
       if (editingAsset?.id === asset.id) {
         closeEditModal();
       }
+      if (previewAsset?.id === asset.id) {
+        setPreviewAsset(null);
+      }
       setMessage('Media deleted.');
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -137,7 +141,7 @@ export function MediaPage() {
         }
       />
 
-      <input accept="image/*" className="hidden" multiple onChange={handleUpload} ref={fileInputRef} type="file" />
+      <input accept="image/*,video/*" className="hidden" multiple onChange={handleUpload} ref={fileInputRef} type="file" />
       <ToastMessage message={message} />
 
       <SectionCard
@@ -166,11 +170,18 @@ export function MediaPage() {
           </div>
         ) : (
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {assets.map((asset) => (
+            {assets.map((asset) => {
+              const isVideo = asset.media_type === 'video' || asset.mime_type?.startsWith('video/');
+
+              return (
               <article key={asset.id} className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
-                <div className="h-56 bg-slate-100">
-                  <img alt={asset.alt_text || asset.label || asset.file_name} className="h-full w-full object-cover" decoding="async" loading="lazy" src={asset.public_url} />
-                </div>
+                <button className="block h-56 w-full bg-slate-100 text-left" onClick={() => setPreviewAsset(asset)} type="button">
+                  {isVideo ? (
+                    <video className="h-full w-full object-cover" muted playsInline preload="metadata" src={asset.public_url} />
+                  ) : (
+                    <img alt={asset.alt_text || asset.label || asset.file_name} className="h-full w-full object-cover" decoding="async" loading="lazy" src={asset.public_url} />
+                  )}
+                </button>
                 <div className="space-y-4 p-5">
                   <div>
                     <p className="truncate text-lg font-bold text-slate-900">{asset.label || asset.file_name}</p>
@@ -182,6 +193,10 @@ export function MediaPage() {
                   </div>
                   {asset.alt_text ? <p className="text-sm leading-6 text-slate-600">{asset.alt_text}</p> : null}
                   <div className="flex flex-wrap gap-3 pt-1">
+                    <button className="button-secondary gap-2" onClick={() => setPreviewAsset(asset)} type="button">
+                      <Eye className="h-4 w-4" />
+                      Preview
+                    </button>
                     <button className="button-secondary gap-2" onClick={() => openEditModal(asset)} type="button">
                       <PencilLine className="h-4 w-4" />
                       Edit
@@ -193,7 +208,8 @@ export function MediaPage() {
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </SectionCard>
@@ -217,6 +233,38 @@ export function MediaPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal description="Preview the selected media file before reusing or deleting it." onClose={() => setPreviewAsset(null)} open={Boolean(previewAsset)} size="lg" title={previewAsset?.label || previewAsset?.file_name || 'Preview media'}>
+        {previewAsset ? (
+          <div className="space-y-5">
+            <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-950">
+              {previewAsset.media_type === 'video' || previewAsset.mime_type?.startsWith('video/') ? (
+                <video className="max-h-[70vh] w-full bg-slate-950 object-contain" controls preload="metadata" src={previewAsset.public_url} />
+              ) : (
+                <img
+                  alt={previewAsset.alt_text || previewAsset.label || previewAsset.file_name}
+                  className="max-h-[70vh] w-full object-contain"
+                  decoding="async"
+                  src={previewAsset.public_url}
+                />
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+              <span>{previewAsset.file_name}</span>
+              <span>{formatFileSize(previewAsset.file_size_bytes)}</span>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3">
+              <button className="button-secondary" onClick={() => setPreviewAsset(null)} type="button">
+                Close
+              </button>
+              <button className="button-danger gap-2" disabled={busyDeleteId === previewAsset.id} onClick={() => void handleDelete(previewAsset)} type="button">
+                <Trash2 className="h-4 w-4" />
+                {busyDeleteId === previewAsset.id ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

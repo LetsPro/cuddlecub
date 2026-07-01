@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Crop, ImagePlus, LoaderCircle } from 'lucide-react';
+import { Crop, Eye, ImagePlus, LoaderCircle, Trash2 } from 'lucide-react';
 import { Modal } from './Modal';
 import { useAppContext } from '../lib/app-context';
 import { deleteMediaAsset, formatFileSize, listMediaAssets, uploadMediaAsset, uploadMediaAssets } from '../lib/media';
@@ -61,6 +61,7 @@ export function MediaPickerModal({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedAssets, setSelectedAssets] = useState<MediaAsset[]>([]);
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
   const [cropPromptAsset, setCropPromptAsset] = useState<MediaAsset | null>(null);
   const [cropAsset, setCropAsset] = useState<MediaAsset | null>(null);
   const [cropArea, setCropArea] = useState<CropArea>({ x: 10, y: 10, width: 80, height: 80 });
@@ -81,6 +82,7 @@ export function MediaPickerModal({
   useEffect(() => {
     if (!open) {
       setSelectedAssets([]);
+      setPreviewAsset(null);
       setCropPromptAsset(null);
       setCropAsset(null);
       setCropArea({ x: 10, y: 10, width: 80, height: 80 });
@@ -157,6 +159,7 @@ export function MediaPickerModal({
 
   function handleAssetSelect(asset: MediaAsset) {
     if (!isMultiple) {
+      setPreviewAsset(null);
       promptForCropOrSelect(asset);
       return;
     }
@@ -168,6 +171,13 @@ export function MediaPickerModal({
 
       return [...current, asset];
     });
+  }
+
+  function handlePreviewSelect(asset: MediaAsset) {
+    handleAssetSelect(asset);
+    if (isMultiple) {
+      setPreviewAsset(null);
+    }
   }
 
   function canCropAsset(asset: MediaAsset) {
@@ -387,6 +397,9 @@ export function MediaPickerModal({
       await deleteMediaAsset(asset);
       setAssets((current) => current.filter((item) => item.id !== asset.id));
       setSelectedAssets((current) => current.filter((item) => item.id !== asset.id));
+      if (previewAsset?.id === asset.id) {
+        setPreviewAsset(null);
+      }
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -477,6 +490,10 @@ export function MediaPickerModal({
                     <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
                       <span className="text-xs text-slate-400">{asset.media_type}</span>
                       <div className="flex items-center gap-3">
+                        <button className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-200" onClick={() => setPreviewAsset(asset)} type="button">
+                          <Eye className="h-3.5 w-3.5" />
+                          Preview
+                        </button>
                         {isMultiple && allowCropInMultiple && canCropAsset(asset) ? (
                           <button className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-200" onClick={() => openMultipleCropEditor(asset)} type="button">
                             <Crop className="h-3.5 w-3.5" />
@@ -484,7 +501,8 @@ export function MediaPickerModal({
                           </button>
                         ) : null}
                         {canDelete ? (
-                          <button className="text-xs font-semibold text-rose-600 transition hover:text-rose-700" disabled={deletingId === asset.id} onClick={() => void handleDelete(asset)} type="button">
+                          <button className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-100 transition hover:bg-rose-100" disabled={deletingId === asset.id} onClick={() => void handleDelete(asset)} type="button">
+                            <Trash2 className="h-3.5 w-3.5" />
                             {deletingId === asset.id ? 'Deleting...' : 'Delete'}
                           </button>
                         ) : null}
@@ -510,6 +528,48 @@ export function MediaPickerModal({
           </div>
         ) : null}
       </div>
+      <Modal
+        description="Preview this media file before selecting or deleting it."
+        onClose={() => setPreviewAsset(null)}
+        open={Boolean(previewAsset)}
+        size="lg"
+        title={previewAsset?.label || previewAsset?.file_name || 'Preview media'}
+      >
+        {previewAsset ? (
+          <div className="space-y-5">
+            <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-950">
+              {previewAsset.media_type === 'video' || previewAsset.mime_type?.startsWith('video/') ? (
+                <video className="max-h-[70vh] w-full bg-slate-950 object-contain" controls preload="metadata" src={previewAsset.public_url} />
+              ) : (
+                <img
+                  alt={previewAsset.alt_text || previewAsset.label || previewAsset.file_name}
+                  className="max-h-[70vh] w-full object-contain"
+                  decoding="async"
+                  src={previewAsset.public_url}
+                />
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+              <span>{previewAsset.file_name}</span>
+              <span>{formatFileSize(previewAsset.file_size_bytes)}</span>
+            </div>
+            <div className="flex flex-wrap justify-end gap-3">
+              <button className="button-secondary" onClick={() => setPreviewAsset(null)} type="button">
+                Close
+              </button>
+              <button className="button-primary" onClick={() => handlePreviewSelect(previewAsset)} type="button">
+                {isMultiple ? 'Toggle selection' : `Use ${acceptedAssetLabel}`}
+              </button>
+              {canDelete ? (
+                <button className="button-danger gap-2" disabled={deletingId === previewAsset.id} onClick={() => void handleDelete(previewAsset)} type="button">
+                  <Trash2 className="h-4 w-4" />
+                  {deletingId === previewAsset.id ? 'Deleting...' : 'Delete'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
       <Modal
         description="Keep the selected image as-is, or create a cropped copy and use that instead."
         onClose={() => setCropPromptAsset(null)}

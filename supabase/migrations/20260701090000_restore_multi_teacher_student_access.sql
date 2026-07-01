@@ -1,24 +1,5 @@
--- Multiple class assignment is canonical on classes.class_teacher_staff_id.
--- Keep staff.class_teacher_for only as a legacy primary class mirror.
-
-update public.staff s
-set class_teacher_for = assigned.primary_class_id
-from (
-  select
-    st.id as staff_id,
-    (
-      select c.id
-      from public.classes c
-      where c.school_id = st.school_id
-        and c.class_teacher_staff_id = st.id
-      order by c.name
-      limit 1
-    ) as primary_class_id
-  from public.staff st
-  where st.role = 'teacher'
-) assigned
-where s.id = assigned.staff_id
-  and s.class_teacher_for is distinct from assigned.primary_class_id;
+-- Ensure every teacher assigned through class_teacher_assignments can access
+-- students in that class, even when multiple teachers share the same class.
 
 create or replace function public.can_staff_access_student(target_student_id uuid)
 returns boolean
