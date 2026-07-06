@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, ImagePlus, Search, Trash2 } from 'lucide-react';
+import { Eye, ImagePlus, PencilLine, Search, Trash2 } from 'lucide-react';
 import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
 import { MediaPickerModal } from '../../components/MediaPickerModal';
@@ -15,6 +15,17 @@ import { formatDate } from '../../lib/utils';
 import type { DailyActivityRecord } from '../../types/app';
 
 const today = new Date().toISOString().slice(0, 10);
+const activityTypes = [
+  { value: 'meal', label: 'Meal' },
+  { value: 'nap', label: 'Nap' },
+  { value: 'toilet', label: 'Washroom' },
+  { value: 'mood', label: 'Mood' },
+  { value: 'health', label: 'Health' },
+  { value: 'behavior', label: 'Behavior' },
+  { value: 'learning', label: 'Learning progress' },
+  { value: 'classroom', label: 'Classroom activity' },
+  { value: 'pickup', label: 'Pickup / drop' },
+];
 
 function isVideoUrl(value: string) {
   return /\.(mp4|mov|m4v|webm|ogg)(\?.*)?$/i.test(value);
@@ -58,6 +69,19 @@ export function StaffDailyActivityPage() {
   });
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [editMediaPickerOpen, setEditMediaPickerOpen] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    student_id: '',
+    activity_date: today,
+    activity_type: 'meal',
+    summary: '',
+    details: '',
+    status: '',
+    image_url: '',
+    shared_with_parent: true,
+  });
+  const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [previewActivity, setPreviewActivity] = useState<DailyActivityRecord | null>(null);
   const studentNameMap = useMemo(() => buildStudentNameMap(students), [students]);
 
@@ -81,6 +105,7 @@ export function StaffDailyActivityPage() {
         .select('*')
         .in('student_id', students.map((student) => student.id))
         .order('activity_date', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;
@@ -142,6 +167,94 @@ export function StaffDailyActivityPage() {
       ...current,
       media_urls: current.media_urls.filter((url) => url !== value),
     }));
+  }
+
+  function openEditModal(activity: DailyActivityRecord) {
+    setEditingActivityId(activity.id);
+    setEditForm({
+      student_id: activity.student_id,
+      activity_date: activity.activity_date,
+      activity_type: activity.activity_type,
+      summary: activity.summary,
+      details: activity.details ?? '',
+      status: activity.status ?? '',
+      image_url: activity.image_url ?? '',
+      shared_with_parent: Boolean(activity.shared_with_parent),
+    });
+  }
+
+  function closeEditModal() {
+    setEditingActivityId(null);
+    setEditMediaPickerOpen(false);
+    setEditForm({
+      student_id: '',
+      activity_date: today,
+      activity_type: 'meal',
+      summary: '',
+      details: '',
+      status: '',
+      image_url: '',
+      shared_with_parent: true,
+    });
+  }
+
+  async function handleUpdateActivity(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingActivityId) return;
+
+    setSubmitMessage(null);
+
+    try {
+      const { error } = await supabase
+        .from('daily_activity_logs')
+        .update({
+          student_id: editForm.student_id,
+          activity_date: editForm.activity_date,
+          activity_type: editForm.activity_type,
+          summary: editForm.summary,
+          details: editForm.details || null,
+          status: editForm.status || null,
+          image_url: editForm.image_url || null,
+          shared_with_parent: editForm.shared_with_parent,
+        })
+        .eq('id', editingActivityId)
+        .eq('school_id', school.id);
+
+      if (error) throw error;
+      closeEditModal();
+      await loadLogs();
+      setSubmitMessage('Daily update saved.');
+    } catch (error) {
+      setSubmitMessage(getErrorMessage(error));
+    }
+  }
+
+  async function handleDeleteActivity(activity: DailyActivityRecord) {
+    const studentName = studentNameMap[activity.student_id] ?? 'this student';
+    const confirmed = window.confirm(`Delete daily update for ${studentName} on ${formatDate(activity.activity_date)}?`);
+
+    if (!confirmed) return;
+
+    setSubmitMessage(null);
+    setBusyDeleteId(activity.id);
+
+    try {
+      const { error } = await supabase.from('daily_activity_logs').delete().eq('id', activity.id).eq('school_id', school.id);
+
+      if (error) throw error;
+      if (editingActivityId === activity.id) {
+        closeEditModal();
+      }
+      if (previewActivity?.id === activity.id) {
+        setPreviewActivity(null);
+      }
+      await loadLogs();
+      setSubmitMessage('Daily update deleted.');
+    } catch (error) {
+      setSubmitMessage(getErrorMessage(error));
+    } finally {
+      setBusyDeleteId(null);
+    }
   }
 
   const filteredStudentIdSet = useMemo(() => new Set(filteredStudents.map((s) => s.id)), [filteredStudents]);
@@ -210,15 +323,7 @@ export function StaffDailyActivityPage() {
             <div>
               <label className="form-label">Type</label>
               <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, activity_type: event.target.value }))} value={form.activity_type}>
-                <option value="meal">Meal</option>
-                <option value="nap">Nap</option>
-                <option value="toilet">Washroom</option>
-                <option value="mood">Mood</option>
-                <option value="health">Health</option>
-                <option value="behavior">Behavior</option>
-                <option value="learning">Learning progress</option>
-                <option value="classroom">Classroom activity</option>
-                <option value="pickup">Pickup / drop</option>
+                {activityTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
               </select>
             </div>
             <div className="sm:col-span-2">
@@ -300,12 +405,22 @@ export function StaffDailyActivityPage() {
                 { key: 'share', label: 'Shared', render: (row) => <StatusBadge value={row.shared_with_parent ? 'shared' : 'internal'} /> },
                 {
                   key: 'preview',
-                  label: 'Preview',
+                  label: 'Actions',
                   render: (row) => (
-                    <button className="button-secondary gap-2 !px-3 !py-2 text-xs" onClick={() => setPreviewActivity(row)} type="button">
-                      <Eye className="h-4 w-4" />
-                      Open
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="button-secondary gap-2 !px-3 !py-2 text-xs" onClick={() => setPreviewActivity(row)} type="button">
+                        <Eye className="h-4 w-4" />
+                        Open
+                      </button>
+                      <button className="button-secondary gap-2 !px-3 !py-2 text-xs" onClick={() => openEditModal(row)} type="button">
+                        <PencilLine className="h-4 w-4" />
+                        Edit
+                      </button>
+                      <button className="button-danger gap-2 !px-3 !py-2 text-xs" disabled={busyDeleteId === row.id} onClick={() => void handleDeleteActivity(row)} type="button">
+                        <Trash2 className="h-4 w-4" />
+                        {busyDeleteId === row.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
                   ),
                 },
               ]}
@@ -330,6 +445,108 @@ export function StaffDailyActivityPage() {
         open={mediaPickerOpen}
         selectedUrls={form.media_urls}
         title="Select daily update media"
+      />
+
+      <Modal
+        description="Update this saved daily activity entry."
+        onClose={closeEditModal}
+        open={Boolean(editingActivityId)}
+        title="Edit daily activity"
+      >
+        <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleUpdateActivity}>
+          <div className="sm:col-span-2">
+            <label className="form-label">Student</label>
+            <select className="form-input" onChange={(event) => setEditForm((current) => ({ ...current, student_id: event.target.value }))} required value={editForm.student_id}>
+              <option value="">Select student</option>
+              {students.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {formatStudentOption(student)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Date</label>
+            <input className="form-input" onChange={(event) => setEditForm((current) => ({ ...current, activity_date: event.target.value }))} required type="date" value={editForm.activity_date} />
+          </div>
+          <div>
+            <label className="form-label">Type</label>
+            <select className="form-input" onChange={(event) => setEditForm((current) => ({ ...current, activity_type: event.target.value }))} value={editForm.activity_type}>
+              {activityTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="form-label">Summary</label>
+            <input className="form-input" onChange={(event) => setEditForm((current) => ({ ...current, summary: event.target.value }))} required value={editForm.summary} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="form-label">Details</label>
+            <textarea className="form-input min-h-28" onChange={(event) => setEditForm((current) => ({ ...current, details: event.target.value }))} value={editForm.details} />
+          </div>
+          <div>
+            <label className="form-label">Status tag</label>
+            <input className="form-input" onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value }))} value={editForm.status} />
+          </div>
+          <label className="self-end rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
+            <input checked={editForm.shared_with_parent} className="mr-3" onChange={(event) => setEditForm((current) => ({ ...current, shared_with_parent: event.target.checked }))} type="checkbox" />
+            Share with parent
+          </label>
+          <div className="space-y-3 sm:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <label className="form-label mb-0">Media</label>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Preview, replace, or remove the photo/video attached to this update.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {editForm.image_url ? (
+                  <button className="button-secondary px-3 py-2 text-xs" onClick={() => setEditForm((current) => ({ ...current, image_url: '' }))} type="button">
+                    Remove media
+                  </button>
+                ) : null}
+                <button className="button-secondary gap-2 px-3 py-2 text-xs" onClick={() => setEditMediaPickerOpen(true)} type="button">
+                  <ImagePlus className="h-4 w-4" />
+                  {editForm.image_url ? 'Replace media' : 'Add media'}
+                </button>
+              </div>
+            </div>
+            {editForm.image_url ? (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="h-56 bg-slate-100">
+                  {isVideoUrl(editForm.image_url) ? (
+                    <video className="h-full w-full object-cover" controls preload="metadata" src={editForm.image_url} />
+                  ) : (
+                    <img alt="Daily activity media preview" className="h-full w-full object-cover" decoding="async" src={editForm.image_url} />
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <span className="truncate text-xs font-semibold text-slate-500">{isVideoUrl(editForm.image_url) ? 'Video' : 'Photo'}</span>
+                  <a className="text-sm font-bold theme-text-primary" href={editForm.image_url} rel="noreferrer" target="_blank">Open media</a>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                No media attached
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4 sm:col-span-2">
+            <button className="button-secondary" onClick={closeEditModal} type="button">Cancel</button>
+            <button className="button-primary" type="submit">Save changes</button>
+          </div>
+        </form>
+      </Modal>
+
+      <MediaPickerModal
+        allowVideos
+        description="Choose a replacement photo or video for this saved daily update."
+        onClose={() => setEditMediaPickerOpen(false)}
+        onSelect={(asset) => {
+          setEditForm((current) => ({ ...current, image_url: asset.public_url }));
+          setEditMediaPickerOpen(false);
+        }}
+        open={editMediaPickerOpen}
+        selectedUrl={editForm.image_url}
+        title="Replace daily update media"
       />
 
       <Modal

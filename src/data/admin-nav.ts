@@ -27,7 +27,7 @@ export const adminNavItems: WorkspaceNavItem[] = [
   { group: 'School', label: 'Admissions', description: 'Inquiry funnel, onboarding and waitlist', path: '/admissions', icon: ClipboardList },
   { group: 'Operations', label: 'Academics', description: 'Classes, timetable and classroom updates', path: '/academics', icon: BookOpenText },
   { group: 'Operations', label: 'Attendance', description: 'Daily student and staff attendance controls', path: '/attendance', icon: Bell },
-  { group: 'Operations', label: 'Daily Care', description: 'Meals, naps, health notes and pickups', path: '/daily-care', icon: HeartPulse },
+  { group: 'Operations', label: 'Daily Activity', description: 'Teacher updates by date for meals, naps and care', path: '/daily-care', icon: HeartPulse },
   { group: 'Operations', label: 'Fees', description: 'Plans, invoices, reminders and receipts', path: '/fees', icon: Wallet },
   { group: 'Operations', label: 'Communication', description: 'WhatsApp-ready notices and logs', path: '/communication', icon: Megaphone },
   { group: 'Operations', label: 'Events', description: 'Calendar, holidays and meeting schedules', path: '/events', icon: CalendarDays },

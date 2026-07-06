@@ -1444,7 +1444,7 @@ for select to authenticated
 using (
   public.is_school_admin(school_id)
   or public.can_staff_access_student(student_id)
-  or public.can_parent_access_student(student_id)
+  or (shared_with_parent and public.can_parent_access_student(student_id))
 );
 
 drop policy if exists student_attendance_staff_manage on public.student_attendance;

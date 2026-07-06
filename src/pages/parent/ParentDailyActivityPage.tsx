@@ -27,16 +27,30 @@ export function ParentDailyActivityPage() {
   async function loadActivityData() {
     setLoadMessage(null);
     try {
+      const linkedStudentIds = students.map((student) => student.id);
       const [activityResponse, noteResponse] = await Promise.all([
-        supabase.from('daily_activity_logs').select('*').in('student_id', students.map((student) => student.id)).order('activity_date', { ascending: false }).limit(80),
-        supabase.from('student_progress_notes').select('*').in('student_id', students.map((student) => student.id)).eq('shared_with_parent', true).order('created_at', { ascending: false }).limit(50),
+        supabase
+          .from('daily_activity_logs')
+          .select('*')
+          .in('student_id', linkedStudentIds)
+          .eq('shared_with_parent', true)
+          .order('activity_date', { ascending: false })
+          .limit(80),
+        supabase
+          .from('student_progress_notes')
+          .select('*')
+          .in('student_id', linkedStudentIds)
+          .eq('shared_with_parent', true)
+          .order('created_at', { ascending: false })
+          .limit(50),
       ]);
 
       if (activityResponse.error) throw activityResponse.error;
       if (noteResponse.error) throw noteResponse.error;
 
-      setActivities((activityResponse.data ?? []) as DailyActivityRecord[]);
-      setNotes((noteResponse.data ?? []) as StudentProgressNote[]);
+      const linkedStudentIdSet = new Set(linkedStudentIds);
+      setActivities(((activityResponse.data ?? []) as DailyActivityRecord[]).filter((activity) => linkedStudentIdSet.has(activity.student_id) && activity.shared_with_parent));
+      setNotes(((noteResponse.data ?? []) as StudentProgressNote[]).filter((note) => linkedStudentIdSet.has(note.student_id) && note.shared_with_parent));
     } catch (error) {
       setLoadMessage(getErrorMessage(error));
     }
