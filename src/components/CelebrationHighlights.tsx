@@ -73,15 +73,15 @@ export function CelebrationHighlights() {
       {message ? <div className="px-5 py-4 text-sm text-rose-700">{message}</div> : null}
 
       {activeItems.length ? (
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 p-5 xl:grid-cols-2">
           {activeItems.map((item) => {
             const studentName = item.students ? `${item.students.first_name} ${item.students.last_name}` : 'School celebration';
             const className = item.students?.classes?.name ?? 'All classes';
             const hoursLeft = Math.max(0, Math.ceil(activeWindowHours - (Date.now() - new Date(item.created_at).getTime()) / (60 * 60 * 1000)));
 
             return (
-              <article key={item.id} className="overflow-hidden rounded-2xl border border-white bg-white shadow-sm">
-                <div className="aspect-[4/3] bg-amber-50">
+              <article key={item.id} className="overflow-hidden rounded-2xl border border-white bg-white shadow-sm md:flex">
+                <div className="aspect-[4/3] bg-amber-50 md:w-56 md:shrink-0">
                   {item.file_url ? (
                     <img alt={item.title} className="h-full w-full object-cover" src={item.file_url} />
                   ) : (
@@ -90,14 +90,14 @@ export function CelebrationHighlights() {
                     </div>
                   )}
                 </div>
-                <div className="space-y-3 p-4">
+                <div className="min-w-0 flex-1 space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="line-clamp-2 text-base font-extrabold leading-6 text-slate-950">{item.title}</p>
+                      <p className="text-base font-extrabold leading-6 text-slate-950">{item.title}</p>
                       <p className="mt-1 text-sm font-semibold text-slate-700">{studentName}</p>
                     </div>
                   </div>
-                  <p className="line-clamp-2 text-sm leading-6 text-slate-600">{item.message}</p>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{item.message}</p>
                   <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500">
                     <span className="rounded-full bg-slate-100 px-3 py-1">{className}</span>
                     <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">{hoursLeft}h left</span>
