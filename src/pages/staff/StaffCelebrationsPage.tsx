@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PencilLine, Search, Trash2, X } from 'lucide-react';
+import { PencilLine, Plus, Search, Trash2 } from 'lucide-react';
 import { ClassSelector } from '../../components/ClassSelector';
 import { MediaField } from '../../components/MediaField';
+import { Modal } from '../../components/Modal';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -29,6 +30,7 @@ export function StaffCelebrationsPage() {
   const [submissionsQuery, setSubmissionsQuery] = useState('');
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
+  const [isCelebrationModalOpen, setIsCelebrationModalOpen] = useState(false);
   const [form, setForm] = useState({
     category: 'birthday_photo',
     student_id: '',
@@ -102,6 +104,14 @@ export function StaffCelebrationsPage() {
   function resetForm() {
     setEditingSubmissionId(null);
     setForm({ category: 'birthday_photo', student_id: '', title: '', message: '', file_url: '' });
+    setIsCelebrationModalOpen(false);
+  }
+
+  function openAddCelebration() {
+    setEditingSubmissionId(null);
+    setForm({ category: 'birthday_photo', student_id: '', title: '', message: '', file_url: '' });
+    setSubmitMessage(null);
+    setIsCelebrationModalOpen(true);
   }
 
   function startEditSubmission(row: StaffRequest) {
@@ -114,6 +124,7 @@ export function StaffCelebrationsPage() {
       file_url: row.file_url ?? '',
     });
     setSubmitMessage(null);
+    setIsCelebrationModalOpen(true);
   }
 
   async function deleteSubmission(row: StaffRequest) {
@@ -155,6 +166,12 @@ export function StaffCelebrationsPage() {
         eyebrow="Birthday & Event Support"
         title="Celebrations, photos and creative suggestions"
         description="Review birthday lists, upload student photos for creatives, suggest event content and see the published school posts."
+        actions={
+          <button className="button-primary gap-2" onClick={openAddCelebration} type="button">
+            <Plus className="h-4 w-4" />
+            Add celebration
+          </button>
+        }
       />
 
       {message || submitMessage ? (
@@ -168,59 +185,29 @@ export function StaffCelebrationsPage() {
         selectedClassId={selectedClassId}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <SectionCard title="Upcoming birthdays" description="Students in the selected class with birthdays coming up.">
-          <div className="space-y-3">
-            {upcomingBirthdays.map((item) => (
-              <div key={item.id} className="flex items-center justify-between rounded-2xl border border-slate-100 p-4">
-                <div>
-                  <p className="font-bold text-slate-900">{item.name}</p>
-                  <p className="text-sm text-slate-500">{formatDate(item.dob)}</p>
-                </div>
-                <div className="text-sm font-semibold text-slate-500">{daysUntil(item.dob)} days</div>
+      <SectionCard
+        action={
+          <button className="button-primary gap-2" onClick={openAddCelebration} type="button">
+            <Plus className="h-4 w-4" />
+            Add celebration
+          </button>
+        }
+        title="Upcoming birthdays"
+        description="Students in the selected class with birthdays coming up."
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {upcomingBirthdays.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-4">
+              <div className="min-w-0">
+                <p className="truncate font-bold text-slate-900">{item.name}</p>
+                <p className="text-sm text-slate-500">{formatDate(item.dob)}</p>
               </div>
-            ))}
-            {upcomingBirthdays.length === 0 ? <p className="text-sm text-slate-500">No student birthdays found.</p> : null}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Send content to admin" description="Birthday photo, event suggestion or celebration images.">
-          <form className="grid gap-4" onSubmit={handleSubmit}>
-            {editingSubmissionId ? (
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <span className="font-semibold">Editing celebration content</span>
-                <button className="button-secondary !px-3 !py-2 text-xs" onClick={resetForm} type="button">
-                  <X className="h-3.5 w-3.5" />
-                  Cancel edit
-                </button>
-              </div>
-            ) : null}
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} value={form.category}>
-              <option value="birthday_photo">Birthday photo</option>
-              <option value="content_suggestion">Event content suggestion</option>
-              <option value="celebration_photo">Class celebration photo</option>
-            </select>
-            <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
-              <option value="">No student link</option>
-              {filteredStudents.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {formatStudentOption(student)}
-                </option>
-              ))}
-            </select>
-            <input className="form-input" placeholder="Title" required onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
-            <textarea className="form-input min-h-28" placeholder="Message" required onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
-            <MediaField
-              helperText="Upload the birthday or celebration image to send with this request."
-              label="Celebration image"
-              onChange={(value) => setForm((current) => ({ ...current, file_url: value }))}
-              previewHeightClassName="h-36"
-              value={form.file_url}
-            />
-            <button className="button-primary" type="submit">{editingSubmissionId ? 'Save celebration' : 'Send to admin'}</button>
-          </form>
-        </SectionCard>
-      </div>
+              <div className="shrink-0 text-sm font-semibold text-slate-500">{daysUntil(item.dob)} days</div>
+            </div>
+          ))}
+          {upcomingBirthdays.length === 0 ? <p className="text-sm text-slate-500">No student birthdays found.</p> : null}
+        </div>
+      </SectionCard>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard title="Your submissions" description="Celebrate support items already sent to admin.">
@@ -299,6 +286,47 @@ export function StaffCelebrationsPage() {
           </div>
         </SectionCard>
       </div>
+
+      <Modal
+        description="Add a birthday photo, class celebration photo or event content suggestion."
+        onClose={resetForm}
+        open={isCelebrationModalOpen}
+        size="lg"
+        title={editingSubmissionId ? 'Edit celebration' : 'Add celebration'}
+      >
+        <form className="grid gap-4" onSubmit={handleSubmit}>
+          <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} value={form.category}>
+            <option value="birthday_photo">Birthday photo</option>
+            <option value="content_suggestion">Event content suggestion</option>
+            <option value="celebration_photo">Class celebration photo</option>
+          </select>
+          <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, student_id: event.target.value }))} value={form.student_id}>
+            <option value="">No student link</option>
+            {filteredStudents.map((student) => (
+              <option key={student.id} value={student.id}>
+                {formatStudentOption(student)}
+              </option>
+            ))}
+          </select>
+          <input className="form-input" placeholder="Title" required onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} value={form.title} />
+          <textarea className="form-input min-h-28" placeholder="Message" required onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} value={form.message} />
+          <MediaField
+            helperText="Upload the birthday or celebration image to send with this request."
+            label="Celebration image"
+            onChange={(value) => setForm((current) => ({ ...current, file_url: value }))}
+            previewHeightClassName="h-36"
+            value={form.file_url}
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <button className="button-secondary" onClick={resetForm} type="button">
+              Cancel
+            </button>
+            <button className="button-primary" type="submit">
+              {editingSubmissionId ? 'Save celebration' : 'Add celebration'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
