@@ -31,15 +31,32 @@ export function ParentLearningPage() {
     setLoadMessage(null);
     try {
       const studentIds = students.map((student) => student.id);
+      const classIds = Array.from(new Set(students.map((student) => student.class_id).filter(Boolean))) as string[];
+      const updateQuery = classIds.length
+        ? supabase.from('classroom_updates').select('*').in('class_id', classIds).order('published_at', { ascending: false }).limit(60)
+        : Promise.resolve({ data: [], error: null });
+      const taskQuery = classIds.length
+        ? supabase.from('homework_tasks').select('*').in('class_id', classIds).order('created_at', { ascending: false }).limit(60)
+        : Promise.resolve({ data: [], error: null });
+      const lessonQuery = classIds.length
+        ? supabase.from('lesson_plans').select('*').in('class_id', classIds).order('lesson_date', { ascending: false }).limit(60)
+        : Promise.resolve({ data: [], error: null });
+      const worksheetQuery = classIds.length
+        ? supabase.from('worksheets').select('*').in('class_id', classIds).order('uploaded_at', { ascending: false }).limit(60)
+        : Promise.resolve({ data: [], error: null });
+      const timetableQuery = classIds.length
+        ? supabase.from('timetable_entries').select('*').in('class_id', classIds).order('weekday').order('start_time').limit(80)
+        : Promise.resolve({ data: [], error: null });
+
       const [updateResponse, taskResponse, lessonResponse, worksheetResponse, progressNoteResponse, timetableResponse] = await Promise.all([
-        supabase.from('classroom_updates').select('*').order('published_at', { ascending: false }).limit(60),
-        supabase.from('homework_tasks').select('*').order('created_at', { ascending: false }).limit(60),
-        supabase.from('lesson_plans').select('*').order('lesson_date', { ascending: false }).limit(60),
-        supabase.from('worksheets').select('*').order('uploaded_at', { ascending: false }).limit(60),
+        updateQuery,
+        taskQuery,
+        lessonQuery,
+        worksheetQuery,
         studentIds.length
           ? supabase.from('student_progress_notes').select('*').in('student_id', studentIds).eq('shared_with_parent', true).order('created_at', { ascending: false }).limit(80)
           : Promise.resolve({ data: [], error: null }),
-        supabase.from('timetable_entries').select('*').order('weekday').order('start_time').limit(80),
+        timetableQuery,
       ]);
 
       if (updateResponse.error) throw updateResponse.error;
