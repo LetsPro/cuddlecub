@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { PencilLine, Search, Trash2, X } from 'lucide-react';
 import { ClassSelector } from '../../components/ClassSelector';
 import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
@@ -28,6 +28,8 @@ export function StaffCelebrationsPage() {
   const [publishedPosts, setPublishedPosts] = useState<ContentPost[]>([]);
   const [submissions, setSubmissions] = useState<StaffRequest[]>([]);
   const [submissionsQuery, setSubmissionsQuery] = useState('');
+  const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
+  const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState({
     category: 'birthday_photo',
     student_id: '',
@@ -50,7 +52,7 @@ export function StaffCelebrationsPage() {
         supabase.from('content_posts').select('*').eq('school_id', school.id).order('created_at', { ascending: false }).limit(20),
         supabase
           .from('staff_requests')
-          .select('*')
+          .select('*, students(first_name, last_name, class_id, classes(name))')
           .eq('staff_id', staffRecord.id)
           .in('category', ['birthday_photo', 'content_suggestion', 'celebration_photo'])
           .order('created_at', { ascending: false })
@@ -74,7 +76,7 @@ export function StaffCelebrationsPage() {
     setSubmitMessage(null);
 
     try {
-      const { error } = await supabase.from('staff_requests').insert({
+      const payload = {
         school_id: school.id,
         staff_id: staffRecord.id,
         student_id: form.student_id || null,
@@ -84,14 +86,53 @@ export function StaffCelebrationsPage() {
         file_url: form.file_url || null,
         status: 'pending',
         priority: 'normal',
-      });
+      };
+      const { error } = editingSubmissionId
+        ? await supabase.from('staff_requests').update(payload).eq('id', editingSubmissionId).eq('staff_id', staffRecord.id)
+        : await supabase.from('staff_requests').insert(payload);
 
       if (error) throw error;
-      setForm({ category: 'birthday_photo', student_id: '', title: '', message: '', file_url: '' });
+      resetForm();
       await loadCelebrations();
-      setSubmitMessage('Celebration content sent to admin.');
+      setSubmitMessage(editingSubmissionId ? 'Celebration content updated.' : 'Celebration content sent to admin.');
     } catch (error) {
       setSubmitMessage(getErrorMessage(error));
+    }
+  }
+
+  function resetForm() {
+    setEditingSubmissionId(null);
+    setForm({ category: 'birthday_photo', student_id: '', title: '', message: '', file_url: '' });
+  }
+
+  function startEditSubmission(row: StaffRequest) {
+    setEditingSubmissionId(row.id);
+    setForm({
+      category: row.category,
+      student_id: row.student_id ?? '',
+      title: row.title,
+      message: row.message,
+      file_url: row.file_url ?? '',
+    });
+    setSubmitMessage(null);
+  }
+
+  async function deleteSubmission(row: StaffRequest) {
+    if (!staffRecord || !window.confirm(`Delete "${row.title}"?`)) return;
+
+    setBusyDeleteId(row.id);
+    setSubmitMessage(null);
+
+    try {
+      const { error } = await supabase.from('staff_requests').delete().eq('id', row.id).eq('staff_id', staffRecord.id);
+      if (error) throw error;
+      if (editingSubmissionId === row.id) resetForm();
+      await loadCelebrations();
+      setSubmitMessage('Celebration content deleted.');
+    } catch (error) {
+      setSubmitMessage(getErrorMessage(error));
+    } finally {
+      setBusyDeleteId(null);
     }
   }
 
@@ -146,6 +187,15 @@ export function StaffCelebrationsPage() {
 
         <SectionCard title="Send content to admin" description="Birthday photo, event suggestion or celebration images.">
           <form className="grid gap-4" onSubmit={handleSubmit}>
+            {editingSubmissionId ? (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <span className="font-semibold">Editing celebration content</span>
+                <button className="button-secondary !px-3 !py-2 text-xs" onClick={resetForm} type="button">
+                  <X className="h-3.5 w-3.5" />
+                  Cancel edit
+                </button>
+              </div>
+            ) : null}
             <select className="form-input" onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} value={form.category}>
               <option value="birthday_photo">Birthday photo</option>
               <option value="content_suggestion">Event content suggestion</option>
@@ -168,7 +218,7 @@ export function StaffCelebrationsPage() {
               previewHeightClassName="h-36"
               value={form.file_url}
             />
-            <button className="button-primary" type="submit">Send to admin</button>
+            <button className="button-primary" type="submit">{editingSubmissionId ? 'Save celebration' : 'Send to admin'}</button>
           </form>
         </SectionCard>
       </div>
@@ -184,9 +234,27 @@ export function StaffCelebrationsPage() {
               columns={[
                 { key: 'category', label: 'Type', render: (row) => <StatusBadge value={row.category} /> },
                 { key: 'title', label: 'Title', render: (row) => row.title },
+                { key: 'student', label: 'Student', render: (row) => row.students ? `${row.students.first_name} ${row.students.last_name}` : 'School celebration' },
+                { key: 'class', label: 'Class', render: (row) => row.students?.classes?.name ?? 'All classes' },
                 { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
                 { key: 'file', label: 'Image', render: (row) => row.file_url ? <a className="font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">View</a> : '-' },
                 { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
+                {
+                  key: 'action',
+                  label: 'Action',
+                  render: (row) => (
+                    <div className="flex flex-wrap gap-2">
+                      <button className="button-secondary px-3 py-2 text-xs" onClick={() => startEditSubmission(row)} type="button">
+                        <PencilLine className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                      <button className="button-danger px-3 py-2 text-xs" disabled={busyDeleteId === row.id} onClick={() => void deleteSubmission(row)} type="button">
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {busyDeleteId === row.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  ),
+                },
               ]}
               emptyMessage="No submissions yet."
               rows={displayedSubmissions}

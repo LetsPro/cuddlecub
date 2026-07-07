@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, CalendarDays, CreditCard, Download, HeartPulse } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CelebrationHighlights } from '../../components/CelebrationHighlights';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
@@ -139,6 +140,8 @@ export function ParentDashboardPage() {
       {message || loadMessage ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
+
+      <CelebrationHighlights />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Bell} label="Today's attendance" value={`${attendance.length}/${students.length}`} meta="Children marked today" />

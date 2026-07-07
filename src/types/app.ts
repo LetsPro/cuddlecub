@@ -377,6 +377,17 @@ export interface StaffRequest {
   status: string;
   priority: string;
   created_at: string;
+  students?: {
+    first_name: string;
+    last_name: string;
+    class_id: string | null;
+    classes?: {
+      name: string;
+    } | null;
+  } | null;
+  staff?: {
+    full_name: string;
+  } | null;
 }
 
 export interface ParentRequest {

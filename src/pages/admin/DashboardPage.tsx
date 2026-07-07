@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, Clock3, FileText, GraduationCap, Megaphone, UserRound, Users, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CelebrationHighlights } from '../../components/CelebrationHighlights';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
 import { StatCard } from '../../components/StatCard';
@@ -162,6 +163,8 @@ export function DashboardPage() {
       {message ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{message}</div>
       ) : null}
+
+      <CelebrationHighlights />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={GraduationCap} label="Total students" meta="Active children" value={metrics.totalStudents} />

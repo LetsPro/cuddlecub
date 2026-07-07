@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Bell, BookOpenText, Cake, Clock3, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ClassSelector } from '../../components/ClassSelector';
+import { CelebrationHighlights } from '../../components/CelebrationHighlights';
 import { ThemedLoader } from '../../components/ThemedLoader';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -145,6 +146,8 @@ export function StaffDashboardPage() {
       {message || loadMessage ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message || loadMessage}</div>
       ) : null}
+
+      <CelebrationHighlights />
 
       <ClassSelector
         classes={availableClasses}
