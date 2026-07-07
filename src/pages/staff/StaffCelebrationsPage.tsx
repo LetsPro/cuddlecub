@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PencilLine, Search, Trash2, X } from 'lucide-react';
 import { ClassSelector } from '../../components/ClassSelector';
-import { DataTable } from '../../components/DataTable';
 import { MediaField } from '../../components/MediaField';
 import { PageHeader } from '../../components/PageHeader';
 import { SectionCard } from '../../components/SectionCard';
@@ -230,49 +229,74 @@ export function StaffCelebrationsPage() {
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input className="form-input pl-11" onChange={(event) => setSubmissionsQuery(event.target.value)} placeholder="Search submissions" value={submissionsQuery} />
             </div>
-            <DataTable
-              columns={[
-                { key: 'category', label: 'Type', render: (row) => <StatusBadge value={row.category} /> },
-                { key: 'title', label: 'Title', render: (row) => row.title },
-                { key: 'student', label: 'Student', render: (row) => row.students ? `${row.students.first_name} ${row.students.last_name}` : 'School celebration' },
-                { key: 'class', label: 'Class', render: (row) => row.students?.classes?.name ?? 'All classes' },
-                { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-                { key: 'file', label: 'Image', render: (row) => row.file_url ? <a className="font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">View</a> : '-' },
-                { key: 'created', label: 'Created', render: (row) => formatDateTime(row.created_at) },
-                {
-                  key: 'action',
-                  label: 'Action',
-                  render: (row) => (
-                    <div className="flex flex-wrap gap-2">
-                      <button className="button-secondary px-3 py-2 text-xs" onClick={() => startEditSubmission(row)} type="button">
-                        <PencilLine className="h-3.5 w-3.5" />
-                        Edit
-                      </button>
-                      <button className="button-danger px-3 py-2 text-xs" disabled={busyDeleteId === row.id} onClick={() => void deleteSubmission(row)} type="button">
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {busyDeleteId === row.id ? 'Deleting...' : 'Delete'}
-                      </button>
+            <div className="space-y-3">
+              {displayedSubmissions.map((row) => (
+                <article key={row.id} className="rounded-2xl border border-slate-100 bg-white p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row">
+                    {row.file_url ? (
+                      <img alt={row.title} className="h-28 w-full rounded-xl object-cover sm:w-32" src={row.file_url} />
+                    ) : (
+                      <div className="flex h-28 w-full items-center justify-center rounded-xl bg-slate-50 text-sm font-semibold text-slate-400 sm:w-32">
+                        No image
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <StatusBadge value={row.category} />
+                          <p className="mt-2 font-bold text-slate-900">{row.title}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button className="button-secondary px-3 py-2 text-xs" onClick={() => startEditSubmission(row)} type="button">
+                            <PencilLine className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button className="button-danger px-3 py-2 text-xs" disabled={busyDeleteId === row.id} onClick={() => void deleteSubmission(row)} type="button">
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {busyDeleteId === row.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{row.message}</p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-500">
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          {row.students ? `${row.students.first_name} ${row.students.last_name}` : 'School celebration'}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1">{row.students?.classes?.name ?? 'All classes'}</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1">{formatDateTime(row.created_at)}</span>
+                      </div>
+                      {row.file_url ? (
+                        <a className="mt-3 inline-flex text-sm font-bold theme-text-primary" href={row.file_url} rel="noreferrer" target="_blank">
+                          View image
+                        </a>
+                      ) : null}
                     </div>
-                  ),
-                },
-              ]}
-              emptyMessage="No submissions yet."
-              rows={displayedSubmissions}
-            />
+                  </div>
+                </article>
+              ))}
+              {displayedSubmissions.length === 0 ? <p className="text-sm text-slate-500">No submissions yet.</p> : null}
+            </div>
           </div>
         </SectionCard>
 
         <SectionCard title="Published school creatives" description="Recent posts available from the school content studio.">
-          <DataTable
-            columns={[
-              { key: 'title', label: 'Title', render: (row) => row.title },
-              { key: 'type', label: 'Type', render: (row) => <StatusBadge value={row.post_type} /> },
-              { key: 'status', label: 'Status', render: (row) => <StatusBadge value={row.status} /> },
-              { key: 'schedule', label: 'Scheduled', render: (row) => formatDateTime(row.scheduled_for) },
-            ]}
-            emptyMessage="No published creatives yet."
-            rows={publishedPosts}
-          />
+          <div className="space-y-3">
+            {publishedPosts.map((post) => (
+              <article key={post.id} className="rounded-2xl border border-slate-100 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-slate-900">{post.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{post.caption ?? 'School creative'}</p>
+                  </div>
+                  <StatusBadge value={post.post_type} />
+                </div>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  {formatDateTime(post.scheduled_for)}
+                </p>
+              </article>
+            ))}
+            {publishedPosts.length === 0 ? <p className="text-sm text-slate-500">No published creatives yet.</p> : null}
+          </div>
         </SectionCard>
       </div>
     </div>

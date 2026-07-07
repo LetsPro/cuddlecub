@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Cake, Clock3, Image as ImageIcon, Sparkles } from 'lucide-react';
-import { StatusBadge } from './StatusBadge';
 import { useAppContext } from '../lib/app-context';
 import { getErrorMessage, supabase } from '../lib/supabase';
 import { formatDateTime } from '../lib/utils';
@@ -94,10 +93,9 @@ export function CelebrationHighlights() {
                 <div className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-base font-extrabold text-slate-950">{item.title}</p>
+                      <p className="line-clamp-2 text-base font-extrabold leading-6 text-slate-950">{item.title}</p>
                       <p className="mt-1 text-sm font-semibold text-slate-700">{studentName}</p>
                     </div>
-                    <StatusBadge value={item.status} />
                   </div>
                   <p className="line-clamp-2 text-sm leading-6 text-slate-600">{item.message}</p>
                   <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500">
